@@ -3,6 +3,7 @@ import SwiftUI
 struct DevicesView: View {
     @State private var searchText = ""
     @State private var selectedFilter: DeviceFilter = .all
+    @StateObject private var thermostatViewModel = ThermostatViewModel()
     
     enum DeviceFilter: String, CaseIterable, Identifiable {
         case all = "All"
@@ -32,28 +33,14 @@ struct DevicesView: View {
                     .padding(.horizontal)
                 }
                 
-                // Main device list
-                List {
-                    // Room section
-                    Section(header: Text("Living Room")) {
-                        DeviceListItem(name: "Smart TV", type: "TV", isOnline: true)
-                        DeviceListItem(name: "Ceiling Light", type: "Light", isOnline: true)
-                        DeviceListItem(name: "Air Conditioner", type: "Thermostat", isOnline: true)
-                    }
-                    
-                    Section(header: Text("Kitchen")) {
-                        DeviceListItem(name: "Refrigerator", type: "Appliance", isOnline: true)
-                        DeviceListItem(name: "Microwave", type: "Appliance", isOnline: false)
-                        DeviceListItem(name: "Coffee Maker", type: "Appliance", isOnline: true)
-                    }
-                    
-                    Section(header: Text("Bedroom")) {
-                        DeviceListItem(name: "Ceiling Fan", type: "Fan", isOnline: true)
-                        DeviceListItem(name: "Bedside Lamp", type: "Light", isOnline: true)
-                        DeviceListItem(name: "Smart Speaker", type: "Speaker", isOnline: true)
-                    }
+                // Content based on selected filter
+                if selectedFilter == .thermostats {
+                    // Show thermostat-specific view
+                    thermostatContent
+                } else {
+                    // Show regular device list
+                    deviceListContent
                 }
-                .listStyle(InsetGroupedListStyle())
             }
             .navigationTitle("Devices")
             .searchable(text: $searchText, prompt: "Search devices")
@@ -65,6 +52,176 @@ struct DevicesView: View {
                         Image(systemName: "plus")
                     }
                 }
+            }
+        }
+    }
+    
+    // Thermostat-specific view
+    private var thermostatContent: some View {
+        VStack {
+            // Header for thermostats section
+            HStack {
+                Text("Thermostats")
+                    .font(.headline)
+                
+                Spacer()
+                
+                if thermostatViewModel.nestOAuthManager.isAuthenticated {
+                    Button {
+                        thermostatViewModel.fetchThermostats()
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                    }
+                } else {
+                    Button {
+                        thermostatViewModel.authenticateNest()
+                    } label: {
+                        Text("Connect Nest")
+                            .font(.subheadline)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(Color.blue)
+                            .foregroundColor(.white)
+                            .cornerRadius(15)
+                    }
+                }
+            }
+            .padding(.horizontal)
+            .padding(.top, 8)
+            
+            // Content based on authentication and loading state
+            if thermostatViewModel.isLoading {
+                ProgressView("Loading thermostats...")
+                    .padding()
+            } else if thermostatViewModel.nestOAuthManager.isAuthenticated && thermostatViewModel.thermostats.isEmpty {
+                VStack(spacing: 15) {
+                    Image(systemName: "thermometer.slash")
+                        .font(.system(size: 50))
+                        .foregroundColor(.gray)
+                    
+                    Text("No thermostats found")
+                        .font(.headline)
+                    
+                    Text("No Nest thermostats were discovered on your account")
+                        .font(.subheadline)
+                        .foregroundColor(.gray)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal)
+                    
+                    Button {
+                        thermostatViewModel.fetchThermostats()
+                    } label: {
+                        Text("Refresh")
+                            .padding(.horizontal, 20)
+                            .padding(.vertical, 8)
+                            .background(Color.blue)
+                            .foregroundColor(.white)
+                            .cornerRadius(8)
+                    }
+                }
+                .padding()
+            } else if !thermostatViewModel.nestOAuthManager.isAuthenticated {
+                // Not authenticated state is handled by the connect button in the header
+                Text("Connect your Nest account to see and control your thermostats")
+                    .font(.subheadline)
+                    .foregroundColor(.gray)
+                    .multilineTextAlignment(.center)
+                    .padding()
+            } else {
+                // List of thermostats
+                List {
+                    ForEach(thermostatViewModel.thermostats) { thermostat in
+                        NavigationLink(destination: ThermostatDetailView(viewModel: thermostatViewModel, thermostat: thermostat)) {
+                            ThermostatRow(thermostat: thermostat)
+                        }
+                    }
+                }
+                .listStyle(InsetGroupedListStyle())
+            }
+            
+            Spacer()
+        }
+        .alert(isPresented: Binding<Bool>(
+            get: { thermostatViewModel.error != nil },
+            set: { if !$0 { thermostatViewModel.error = nil } }
+        )) {
+            Alert(
+                title: Text("Error"),
+                message: Text(thermostatViewModel.error ?? "Unknown error"),
+                dismissButton: .default(Text("OK"))
+            )
+        }
+    }
+    
+    // Regular device list view
+    private var deviceListContent: some View {
+        List {
+            // Room section
+            Section(header: Text("Living Room")) {
+                DeviceListItem(name: "Smart TV", type: "TV", isOnline: true)
+                DeviceListItem(name: "Ceiling Light", type: "Light", isOnline: true)
+                
+                // Show thermostats if we have any and we're not filtering them out
+                if selectedFilter == .all {
+                    ForEach(thermostatViewModel.thermostats.filter { $0.name.contains("Living") }) { thermostat in
+                        NavigationLink(destination: ThermostatDetailView(viewModel: thermostatViewModel, thermostat: thermostat)) {
+                            DeviceListItem(
+                                name: thermostat.name,
+                                type: "Thermostat",
+                                isOnline: thermostat.status == .online
+                            )
+                        }
+                    }
+                }
+                
+                if thermostatViewModel.thermostats.isEmpty && (selectedFilter == .all || selectedFilter == .thermostats) {
+                    DeviceListItem(name: "Air Conditioner", type: "Thermostat", isOnline: true)
+                }
+            }
+            
+            Section(header: Text("Kitchen")) {
+                DeviceListItem(name: "Refrigerator", type: "Appliance", isOnline: true)
+                DeviceListItem(name: "Microwave", type: "Appliance", isOnline: false)
+                DeviceListItem(name: "Coffee Maker", type: "Appliance", isOnline: true)
+                
+                // Show thermostats if we have any and we're not filtering them out
+                if selectedFilter == .all {
+                    ForEach(thermostatViewModel.thermostats.filter { $0.name.contains("Kitchen") }) { thermostat in
+                        NavigationLink(destination: ThermostatDetailView(viewModel: thermostatViewModel, thermostat: thermostat)) {
+                            DeviceListItem(
+                                name: thermostat.name,
+                                type: "Thermostat",
+                                isOnline: thermostat.status == .online
+                            )
+                        }
+                    }
+                }
+            }
+            
+            Section(header: Text("Bedroom")) {
+                DeviceListItem(name: "Ceiling Fan", type: "Fan", isOnline: true)
+                DeviceListItem(name: "Bedside Lamp", type: "Light", isOnline: true)
+                DeviceListItem(name: "Smart Speaker", type: "Speaker", isOnline: true)
+                
+                // Show thermostats if we have any and we're not filtering them out
+                if selectedFilter == .all {
+                    ForEach(thermostatViewModel.thermostats.filter { $0.name.contains("Bedroom") }) { thermostat in
+                        NavigationLink(destination: ThermostatDetailView(viewModel: thermostatViewModel, thermostat: thermostat)) {
+                            DeviceListItem(
+                                name: thermostat.name,
+                                type: "Thermostat",
+                                isOnline: thermostat.status == .online
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        .listStyle(InsetGroupedListStyle())
+        .onAppear {
+            // Attempt to fetch thermostats when the view appears
+            if thermostatViewModel.nestOAuthManager.isAuthenticated && thermostatViewModel.thermostats.isEmpty {
+                thermostatViewModel.fetchThermostats()
             }
         }
     }
