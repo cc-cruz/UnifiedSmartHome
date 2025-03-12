@@ -1,17 +1,60 @@
 import Foundation
 import Combine
 
+// Detailed error types for better error handling
+enum NestAdapterError: Error, LocalizedError {
+    case notAuthenticated
+    case invalidURL
+    case serverError(statusCode: Int)
+    case networkError(Error)
+    case invalidCommand
+    case rateLimited(retryAfter: TimeInterval?)
+    case parseError(Error)
+    
+    var errorDescription: String? {
+        switch self {
+        case .notAuthenticated:
+            return "Not authenticated with Nest. Please connect your account."
+        case .invalidURL:
+            return "Invalid API URL. Please check your configuration."
+        case .serverError(let code):
+            return "Server error with status code \(code)"
+        case .networkError(let error):
+            return "Network error: \(error.localizedDescription)"
+        case .invalidCommand:
+            return "Invalid command for this device"
+        case .rateLimited(let retryAfter):
+            if let seconds = retryAfter {
+                return "Rate limited. Please try again after \(Int(seconds)) seconds."
+            }
+            return "Rate limited. Please try again later."
+        case .parseError(let error):
+            return "Failed to parse API response: \(error.localizedDescription)"
+        }
+    }
+}
+
 class NestAdapter: SmartDeviceAdapter {
     private var authToken: String?
     private let baseURL = "https://smartdevicemanagement.googleapis.com/v1"
-    private let projectId = "YOUR_PROJECT_ID" // Replace with your actual Google Cloud project ID
+    private let nestOAuthManager: NestOAuthManager
     
     private var enterprisePath: String {
-        return "enterprises/\(projectId)"
+        return "enterprises/\(nestOAuthManager.getProjectID())"
     }
     
-    private var session = URLSession.shared
+    private var session: URLSession
     private var cancellables = Set<AnyCancellable>()
+    
+    // Rate limiting properties
+    private var lastRequestTime: Date?
+    private var requestsThisMinute = 0
+    private let maxRequestsPerMinute = 60 // Default, adjust based on API docs
+    
+    init(nestOAuthManager: NestOAuthManager = NestOAuthManager(), session: URLSession = .shared) {
+        self.nestOAuthManager = nestOAuthManager
+        self.session = session
+    }
     
     // Initialize connection with auth token
     func initializeConnection(authToken: String) throws {
@@ -21,12 +64,15 @@ class NestAdapter: SmartDeviceAdapter {
     // Fetch all devices from Nest
     func fetchDevices() async throws -> [AbstractDevice] {
         guard let authToken = authToken else {
-            throw AdapterError.notAuthenticated
+            throw NestAdapterError.notAuthenticated
         }
+        
+        // Rate limiting check
+        try checkRateLimit()
         
         let urlString = "\(baseURL)/\(enterprisePath)/devices"
         guard let url = URL(string: urlString) else {
-            throw AdapterError.invalidURL
+            throw NestAdapterError.invalidURL
         }
         
         var request = URLRequest(url: url)
@@ -35,27 +81,57 @@ class NestAdapter: SmartDeviceAdapter {
         do {
             let (data, response) = try await session.data(for: request)
             
-            guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) else {
-                throw AdapterError.serverError
+            // Track request for rate limiting
+            trackRequest()
+            
+            // Handle HTTP status codes as specified in the API Reference doc
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw NestAdapterError.serverError(statusCode: 0)
+            }
+            
+            switch httpResponse.statusCode {
+            case 200...299:
+                // Success - process the response
+                break
+            case 401:
+                // Unauthorized - token issue
+                throw NestAdapterError.notAuthenticated
+            case 429:
+                // Rate limited
+                let retryAfter = httpResponse.value(forHTTPHeaderField: "Retry-After").flatMap { Double($0) }
+                throw NestAdapterError.rateLimited(retryAfter: retryAfter)
+            default:
+                throw NestAdapterError.serverError(statusCode: httpResponse.statusCode)
             }
             
             // Parse the response
-            let nestResponse = try JSONDecoder().decode(NestDeviceResponse.self, from: data)
-            
-            // Convert Nest devices to abstract devices
-            return nestResponse.devices.compactMap { nestDevice in
-                return convertToAbstractDevice(nestDevice)
+            do {
+                let nestResponse = try JSONDecoder().decode(NestDeviceResponse.self, from: data)
+                
+                // Convert Nest devices to abstract devices
+                return nestResponse.devices.compactMap { nestDevice in
+                    return convertToAbstractDevice(nestDevice)
+                }
+            } catch {
+                throw NestAdapterError.parseError(error)
             }
+        } catch let error as NestAdapterError {
+            // Re-throw adapter errors
+            throw error
         } catch {
-            throw AdapterError.networkError(error)
+            // Wrap other errors
+            throw NestAdapterError.networkError(error)
         }
     }
     
     // Update device state
     func updateDeviceState(deviceId: String, newState: DeviceState) async throws -> DeviceState {
         guard let authToken = authToken else {
-            throw AdapterError.notAuthenticated
+            throw NestAdapterError.notAuthenticated
         }
+        
+        // Rate limiting check
+        try checkRateLimit()
         
         // Extract the relative device ID from the full device name if needed
         let relativeDeviceId: String
@@ -67,7 +143,7 @@ class NestAdapter: SmartDeviceAdapter {
         
         let urlString = "\(baseURL)/\(enterprisePath)/devices/\(relativeDeviceId):executeCommand"
         guard let url = URL(string: urlString) else {
-            throw AdapterError.invalidURL
+            throw NestAdapterError.invalidURL
         }
         
         var request = URLRequest(url: url)
@@ -87,17 +163,33 @@ class NestAdapter: SmartDeviceAdapter {
                 let bodyData = try JSONEncoder().encode(command)
                 request.httpBody = bodyData
                 
-                let (data, response) = try await session.data(for: request)
+                let (_, response) = try await session.data(for: request)
                 
-                guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) else {
-                    throw AdapterError.serverError
+                // Track request for rate limiting
+                trackRequest()
+                
+                // Handle HTTP status codes
+                guard let httpResponse = response as? HTTPURLResponse else {
+                    throw NestAdapterError.serverError(statusCode: 0)
                 }
                 
-                // Return the updated state
-                return newState
+                switch httpResponse.statusCode {
+                case 200...299:
+                    // Success - return the updated state
+                    return newState
+                case 401:
+                    throw NestAdapterError.notAuthenticated
+                case 429:
+                    let retryAfter = httpResponse.value(forHTTPHeaderField: "Retry-After").flatMap { Double($0) }
+                    throw NestAdapterError.rateLimited(retryAfter: retryAfter)
+                default:
+                    throw NestAdapterError.serverError(statusCode: httpResponse.statusCode)
+                }
                 
+            } catch let error as NestAdapterError {
+                throw error
             } catch {
-                throw AdapterError.networkError(error)
+                throw NestAdapterError.networkError(error)
             }
         } else if let mode = newState.attributes["mode"]?.value as? String {
             // For mode updates
@@ -125,20 +217,64 @@ class NestAdapter: SmartDeviceAdapter {
                 let bodyData = try JSONEncoder().encode(command)
                 request.httpBody = bodyData
                 
-                let (data, response) = try await session.data(for: request)
+                let (_, response) = try await session.data(for: request)
                 
-                guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) else {
-                    throw AdapterError.serverError
+                // Track request for rate limiting
+                trackRequest()
+                
+                // Handle HTTP status codes
+                guard let httpResponse = response as? HTTPURLResponse else {
+                    throw NestAdapterError.serverError(statusCode: 0)
                 }
                 
-                // Return the updated state
-                return newState
+                switch httpResponse.statusCode {
+                case 200...299:
+                    // Success - return the updated state
+                    return newState
+                case 401:
+                    throw NestAdapterError.notAuthenticated
+                case 429:
+                    let retryAfter = httpResponse.value(forHTTPHeaderField: "Retry-After").flatMap { Double($0) }
+                    throw NestAdapterError.rateLimited(retryAfter: retryAfter)
+                default:
+                    throw NestAdapterError.serverError(statusCode: httpResponse.statusCode)
+                }
                 
+            } catch let error as NestAdapterError {
+                throw error
             } catch {
-                throw AdapterError.networkError(error)
+                throw NestAdapterError.networkError(error)
             }
         } else {
-            throw AdapterError.invalidCommand
+            throw NestAdapterError.invalidCommand
+        }
+    }
+    
+    // Private method to track request rate for rate limiting
+    private func trackRequest() {
+        let now = Date()
+        
+        if let last = lastRequestTime, now.timeIntervalSince(last) < 60 {
+            // Still within the same minute window
+            requestsThisMinute += 1
+        } else {
+            // New minute window
+            requestsThisMinute = 1
+            lastRequestTime = now
+        }
+    }
+    
+    // Check if we're approaching rate limits
+    private func checkRateLimit() throws {
+        guard let last = lastRequestTime else {
+            return // First request, no need to check
+        }
+        
+        let now = Date()
+        if now.timeIntervalSince(last) < 60 && requestsThisMinute >= maxRequestsPerMinute {
+            // We've hit our rate limit for this minute
+            let secondsToWait = 60 - now.timeIntervalSince(last)
+            throw NestAdapterError.rateLimited(retryAfter: secondsToWait)
         }
     }
     
@@ -187,10 +323,13 @@ class NestAdapter: SmartDeviceAdapter {
                 ])
             ]
             
+            // Get device name
+            let deviceName = nestDevice.traits["sdm.devices.traits.Info"]?["customName"] as? String ?? "Nest Thermostat"
+            
             // Create a thermostat device
             return ThermostatDevice(
                 id: nestDevice.name,
-                name: nestDevice.traits["sdm.devices.traits.Info"]?["customName"] as? String ?? "Nest Thermostat",
+                name: deviceName,
                 manufacturer: .googleNest,
                 roomId: nil, // Nest doesn't provide room info in the same way
                 propertyId: "default", // You would need to map this to your property structure
@@ -205,15 +344,6 @@ class NestAdapter: SmartDeviceAdapter {
         
         return nil // Not a thermostat or unsupported device type
     }
-}
-
-// MARK: - Error Types
-enum AdapterError: Error {
-    case notAuthenticated
-    case invalidURL
-    case serverError
-    case networkError(Error)
-    case invalidCommand
 }
 
 // MARK: - Nest API Response Models

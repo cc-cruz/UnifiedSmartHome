@@ -1,196 +1,205 @@
 import SwiftUI
 
 struct ThermostatListView: View {
-    @StateObject var viewModel = ThermostatViewModel()
+    @ObservedObject var viewModel: ThermostatViewModel
+    @State private var temperatureUnit: TemperatureUnit = .celsius
     
     var body: some View {
         NavigationView {
-            ZStack {
-                // Content based on authentication and loading state
-                if viewModel.isLoading {
-                    ProgressView("Loading thermostats...")
-                } else if !viewModel.nestOAuthManager.isAuthenticated {
-                    authenticationView
+            Group {
+                if viewModel.isLoading && viewModel.thermostats.isEmpty {
+                    // Show loading indicator when initially loading
+                    VStack {
+                        ProgressView("Loading thermostats...")
+                        
+                        if let error = viewModel.error {
+                            Text(error)
+                                .foregroundColor(.red)
+                                .padding()
+                                .multilineTextAlignment(.center)
+                        }
+                    }
                 } else if viewModel.thermostats.isEmpty {
-                    emptyStateView
+                    // Show empty state
+                    VStack(spacing: 20) {
+                        Image(systemName: "thermometer")
+                            .font(.system(size: 60))
+                            .foregroundColor(.gray)
+                        
+                        Text("No Thermostats Found")
+                            .font(.title2)
+                            .fontWeight(.medium)
+                        
+                        if let error = viewModel.error {
+                            ErrorView(errorMessage: error)
+                                .padding(.horizontal, 40)
+                        } else {
+                            Text("Connect your Nest account to see your thermostats")
+                                .foregroundColor(.secondary)
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal, 40)
+                        }
+                        
+                        Button(action: {
+                            viewModel.authenticateNest()
+                        }) {
+                            Label("Connect Nest Account", systemImage: "link")
+                                .padding()
+                                .frame(maxWidth: .infinity)
+                                .background(Color.blue)
+                                .foregroundColor(.white)
+                                .cornerRadius(10)
+                                .padding(.horizontal, 40)
+                        }
+                        
+                        // If already authenticated, add a refresh button
+                        if viewModel.nestOAuthManager.isAuthenticated {
+                            Button(action: {
+                                viewModel.fetchThermostats()
+                            }) {
+                                Label("Refresh Devices", systemImage: "arrow.clockwise")
+                                    .padding()
+                                    .frame(maxWidth: .infinity)
+                                    .background(Color.green)
+                                    .foregroundColor(.white)
+                                    .cornerRadius(10)
+                                    .padding(.horizontal, 40)
+                            }
+                        }
+                    }
+                    .padding()
                 } else {
-                    thermostatsListView
-                }
-            }
-            .navigationTitle("Thermostats")
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    // Show refresh button if authenticated
-                    if viewModel.nestOAuthManager.isAuthenticated {
-                        Button {
-                            viewModel.fetchThermostats()
-                        } label: {
-                            Image(systemName: "arrow.clockwise")
+                    // Show thermostat list
+                    ScrollView {
+                        VStack(spacing: 16) {
+                            // Unit selector
+                            HStack {
+                                Text("Temperature Unit:")
+                                Picker("Temperature Unit", selection: $temperatureUnit) {
+                                    Text("Celsius").tag(TemperatureUnit.celsius)
+                                    Text("Fahrenheit").tag(TemperatureUnit.fahrenheit)
+                                }
+                                .pickerStyle(SegmentedPickerStyle())
+                            }
+                            .padding(.horizontal)
+                            .padding(.top, 8)
+                            
+                            // Error banner
+                            if let error = viewModel.error {
+                                ErrorView(errorMessage: error)
+                                    .padding(.horizontal)
+                            }
+                            
+                            // Thermostat list
+                            ForEach(viewModel.thermostats, id: \.id) { thermostat in
+                                NavigationLink(destination: ThermostatDetailView(viewModel: viewModel, thermostat: thermostat)) {
+                                    ThermostatCard(thermostat: thermostat, unit: temperatureUnit)
+                                        .padding(.horizontal)
+                                }
+                                .buttonStyle(PlainButtonStyle())
+                            }
+                            
+                            // Refresh button at the bottom
+                            Button(action: {
+                                viewModel.fetchThermostats()
+                            }) {
+                                HStack {
+                                    Image(systemName: "arrow.clockwise")
+                                    Text("Refresh")
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                                .background(Color.secondary.opacity(0.2))
+                                .cornerRadius(10)
+                                .padding(.horizontal)
+                            }
+                            .padding(.bottom)
+                            
+                            // Loading indicator when refreshing
+                            if viewModel.isLoading {
+                                LoadingView()
+                            }
+                        }
+                        .padding(.vertical)
+                    }
+                    .navigationTitle("Thermostats")
+                    .toolbar {
+                        ToolbarItem(placement: .navigationBarTrailing) {
+                            Button(action: {
+                                viewModel.signOut()
+                            }) {
+                                Text("Disconnect")
+                            }
                         }
                     }
                 }
             }
-            .alert(isPresented: Binding<Bool>(
-                get: { viewModel.error != nil },
-                set: { if !$0 { viewModel.error = nil } }
-            )) {
-                Alert(
-                    title: Text("Error"),
-                    message: Text(viewModel.error ?? "Unknown error"),
-                    dismissButton: .default(Text("OK"))
-                )
-            }
-        }
-    }
-    
-    // View for when the user is not authenticated
-    private var authenticationView: some View {
-        VStack(spacing: 20) {
-            Image(systemName: "thermometer")
-                .font(.system(size: 70))
-                .foregroundColor(.blue)
-            
-            Text("Connect to Nest")
-                .font(.title)
-                .fontWeight(.bold)
-            
-            Text("Link your Nest account to control your thermostats")
-                .multilineTextAlignment(.center)
-                .padding(.horizontal)
-            
-            Button {
-                viewModel.authenticateNest()
-            } label: {
-                Text("Connect to Nest")
-                    .fontWeight(.semibold)
-                    .frame(maxWidth: .infinity)
-                    .padding()
-                    .background(Color.blue)
-                    .foregroundColor(.white)
-                    .cornerRadius(10)
-            }
-            .padding(.horizontal, 50)
-            .padding(.top, 20)
-        }
-        .padding()
-    }
-    
-    // View for when there are no thermostats
-    private var emptyStateView: some View {
-        VStack(spacing: 20) {
-            Image(systemName: "thermometer.slash")
-                .font(.system(size: 70))
-                .foregroundColor(.gray)
-            
-            Text("No Thermostats Found")
-                .font(.title)
-                .fontWeight(.bold)
-            
-            Text("No thermostats were found in your Nest account. Make sure your devices are set up correctly.")
-                .multilineTextAlignment(.center)
-                .padding(.horizontal)
-            
-            HStack(spacing: 15) {
-                Button {
+            .navigationTitle("Thermostats")
+            .onAppear {
+                // On first appear, attempt to fetch thermostats if authenticated
+                if viewModel.nestOAuthManager.isAuthenticated && viewModel.thermostats.isEmpty {
                     viewModel.fetchThermostats()
-                } label: {
-                    Text("Retry")
-                        .fontWeight(.semibold)
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(Color.blue)
-                        .foregroundColor(.white)
-                        .cornerRadius(10)
-                }
-                
-                Button {
-                    viewModel.signOut()
-                } label: {
-                    Text("Sign Out")
-                        .fontWeight(.semibold)
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(Color.red)
-                        .foregroundColor(.white)
-                        .cornerRadius(10)
                 }
             }
-            .padding(.horizontal, 30)
-            .padding(.top, 20)
-        }
-        .padding()
-    }
-    
-    // List of thermostats
-    private var thermostatsListView: some View {
-        List {
-            ForEach(viewModel.thermostats) { thermostat in
-                NavigationLink(destination: ThermostatDetailView(viewModel: viewModel, thermostat: thermostat)) {
-                    ThermostatRow(thermostat: thermostat)
-                }
+            .refreshable {
+                // Pull to refresh
+                viewModel.fetchThermostats()
             }
         }
     }
 }
 
-// Row for each thermostat in the list
-struct ThermostatRow: View {
+struct ThermostatCard: View {
     let thermostat: ThermostatDevice
+    let unit: TemperatureUnit
     
     var body: some View {
-        HStack {
-            // Icon based on mode
-            Image(systemName: iconName)
-                .font(.system(size: 30))
-                .foregroundColor(iconColor)
-                .frame(width: 50, height: 50)
-                .background(Color.gray.opacity(0.1))
-                .cornerRadius(8)
+        HStack(spacing: 16) {
+            // Mode icon
+            ZStack {
+                Circle()
+                    .fill(modeColor.opacity(0.2))
+                    .frame(width: 50, height: 50)
+                
+                Image(systemName: thermostat.mode.iconName)
+                    .font(.system(size: 24))
+                    .foregroundColor(modeColor)
+            }
             
+            // Thermostat info
             VStack(alignment: .leading, spacing: 4) {
                 Text(thermostat.name)
                     .font(.headline)
                 
-                HStack {
-                    Text("\(Int(thermostat.currentTemperature))°\(thermostat.units == .celsius ? "C" : "F")")
-                        .font(.subheadline)
-                    
-                    Text("•")
-                    
-                    Text(modeText)
-                        .font(.subheadline)
-                        .foregroundColor(iconColor)
-                }
+                Text("Current: \(thermostat.formattedTemperature(thermostat.currentTemperature, unit: unit))")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                
+                Text("Target: \(thermostat.formattedTemperature(thermostat.targetTemperature, unit: unit))")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                
+                Text("Mode: \(thermostat.mode.displayName)")
+                    .font(.caption)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(modeColor.opacity(0.2))
+                    .cornerRadius(4)
             }
             
             Spacer()
             
-            // Target temperature
-            Text("\(Int(thermostat.targetTemperature))°")
-                .font(.title2)
-                .fontWeight(.semibold)
+            // Navigation indicator
+            Image(systemName: "chevron.right")
+                .foregroundColor(.secondary)
         }
-        .padding(.vertical, 8)
+        .padding()
+        .background(Color(.systemBackground))
+        .cornerRadius(12)
+        .shadow(color: Color(.sRGBLinear, white: 0, opacity: 0.1), radius: 3)
     }
     
-    // Icon based on thermostat mode
-    private var iconName: String {
-        switch thermostat.mode {
-        case .heat:
-            return "flame.fill"
-        case .cool:
-            return "snowflake"
-        case .auto:
-            return "thermometer"
-        case .eco:
-            return "leaf.fill"
-        case .off:
-            return "power"
-        }
-    }
-    
-    // Color based on thermostat mode
-    private var iconColor: Color {
+    private var modeColor: Color {
         switch thermostat.mode {
         case .heat:
             return .orange
@@ -198,32 +207,14 @@ struct ThermostatRow: View {
             return .blue
         case .auto:
             return .purple
-        case .eco:
-            return .green
         case .off:
             return .gray
-        }
-    }
-    
-    // Text representation of mode
-    private var modeText: String {
-        switch thermostat.mode {
-        case .heat:
-            return "Heating"
-        case .cool:
-            return "Cooling"
-        case .auto:
-            return "Auto"
-        case .eco:
-            return "Eco"
-        case .off:
-            return "Off"
         }
     }
 }
 
 struct ThermostatListView_Previews: PreviewProvider {
     static var previews: some View {
-        ThermostatListView()
+        ThermostatListView(viewModel: ThermostatViewModel())
     }
 } 

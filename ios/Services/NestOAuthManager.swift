@@ -2,6 +2,46 @@ import Foundation
 import Combine
 import AuthenticationServices
 
+// Nest configuration struct to store settings
+struct NestConfiguration {
+    let clientID: String
+    let clientSecret: String
+    let redirectURI: String
+    let projectID: String
+    
+    // Load from configuration source
+    static func loadFromConfiguration() -> NestConfiguration {
+        // For development, we'll read from Info.plist
+        // In production, these could come from an encrypted config or secure backend
+        guard let infoDictionary = Bundle.main.infoDictionary else {
+            fatalError("Cannot load Info.plist")
+        }
+        
+        // Read values with fallbacks for development
+        let clientID = (infoDictionary["NEST_CLIENT_ID"] as? String) ?? ""
+        let clientSecret = (infoDictionary["NEST_CLIENT_SECRET"] as? String) ?? ""
+        let projectID = (infoDictionary["NEST_PROJECT_ID"] as? String) ?? ""
+        
+        // Use a hard-coded redirect URI since this needs to match app configuration
+        let redirectURI = "com.unifiedsmarthome:/oauth2callback"
+        
+        // Validate required credentials in debug mode
+        #if DEBUG
+        if clientID.isEmpty || clientSecret.isEmpty || projectID.isEmpty {
+            print("⚠️ WARNING: Missing Nest API credentials in Info.plist. The app will not be able to connect to Nest.")
+            print("Add NEST_CLIENT_ID, NEST_CLIENT_SECRET, and NEST_PROJECT_ID to Info.plist")
+        }
+        #endif
+        
+        return NestConfiguration(
+            clientID: clientID,
+            clientSecret: clientSecret,
+            redirectURI: redirectURI,
+            projectID: projectID
+        )
+    }
+}
+
 class NestOAuthManager: NSObject, ObservableObject, ASWebAuthenticationPresentationContextProviding {
     // Published properties to track authentication state
     @Published var isAuthenticated = false
@@ -9,9 +49,7 @@ class NestOAuthManager: NSObject, ObservableObject, ASWebAuthenticationPresentat
     @Published var error: String?
     
     // OAuth configuration
-    private let clientID = "YOUR_NEST_CLIENT_ID" // Replace with actual Client ID
-    private let clientSecret = "YOUR_NEST_CLIENT_SECRET" // Replace with actual Client Secret
-    private let redirectURI = "com.unifiedsmarthome:/oauth2callback"
+    private let configuration: NestConfiguration
     private let authorizationEndpoint = "https://accounts.google.com/o/oauth2/auth"
     private let tokenEndpoint = "https://accounts.google.com/o/oauth2/token"
     private let scope = "https://www.googleapis.com/auth/sdm.service"
@@ -57,7 +95,8 @@ class NestOAuthManager: NSObject, ObservableObject, ASWebAuthenticationPresentat
         }
     }
     
-    override init() {
+    init(configuration: NestConfiguration = NestConfiguration.loadFromConfiguration()) {
+        self.configuration = configuration
         super.init()
         checkAuthentication()
     }
@@ -77,6 +116,12 @@ class NestOAuthManager: NSObject, ObservableObject, ASWebAuthenticationPresentat
     
     // Start OAuth flow
     func startOAuthFlow() {
+        // Verify we have a client ID before starting
+        guard !configuration.clientID.isEmpty else {
+            self.error = "Missing Nest API credentials. Please configure the app with valid credentials."
+            return
+        }
+        
         isAuthenticating = true
         error = nil
         
@@ -84,8 +129,8 @@ class NestOAuthManager: NSObject, ObservableObject, ASWebAuthenticationPresentat
         
         var components = URLComponents(string: authorizationEndpoint)
         components?.queryItems = [
-            URLQueryItem(name: "client_id", value: clientID),
-            URLQueryItem(name: "redirect_uri", value: redirectURI),
+            URLQueryItem(name: "client_id", value: configuration.clientID),
+            URLQueryItem(name: "redirect_uri", value: configuration.redirectURI),
             URLQueryItem(name: "response_type", value: "code"),
             URLQueryItem(name: "scope", value: scope),
             URLQueryItem(name: "state", value: state),
@@ -144,11 +189,11 @@ class NestOAuthManager: NSObject, ObservableObject, ASWebAuthenticationPresentat
     // Exchange authorization code for tokens
     private func exchangeCodeForToken(code: String) {
         let parameters = [
-            "client_id": clientID,
-            "client_secret": clientSecret,
+            "client_id": configuration.clientID,
+            "client_secret": configuration.clientSecret,
             "code": code,
             "grant_type": "authorization_code",
-            "redirect_uri": redirectURI
+            "redirect_uri": configuration.redirectURI
         ]
         
         guard let url = URL(string: tokenEndpoint) else {
@@ -195,8 +240,8 @@ class NestOAuthManager: NSObject, ObservableObject, ASWebAuthenticationPresentat
         }
         
         let parameters = [
-            "client_id": clientID,
-            "client_secret": clientSecret,
+            "client_id": configuration.clientID,
+            "client_secret": configuration.clientSecret,
             "refresh_token": refreshToken,
             "grant_type": "refresh_token"
         ]
@@ -260,7 +305,12 @@ class NestOAuthManager: NSObject, ObservableObject, ASWebAuthenticationPresentat
     // Get current access token for API calls
     func getAccessToken() -> String? {
         if let expiry = tokenExpiry, let token = accessToken {
-            if expiry > Date() {
+            // If token expires in less than 5 minutes, proactively refresh it
+            if expiry.timeIntervalSinceNow < 300 {
+                refreshAccessToken()
+                // Return current token for now, the refresh will happen in background
+                return token
+            } else if expiry > Date() {
                 return token
             } else {
                 refreshAccessToken()
@@ -268,6 +318,11 @@ class NestOAuthManager: NSObject, ObservableObject, ASWebAuthenticationPresentat
             }
         }
         return nil
+    }
+    
+    // Get project ID for device API access
+    func getProjectID() -> String {
+        return configuration.projectID
     }
     
     // ASWebAuthenticationPresentationContextProviding

@@ -6,275 +6,233 @@ struct ThermostatDetailView: View {
     
     @State private var targetTemperature: Double
     @State private var selectedMode: ThermostatDevice.ThermostatMode
+    @State private var isEditing = false
+    
+    // Temperature unit for display
+    @State private var temperatureUnit: TemperatureUnit = .celsius
     
     init(viewModel: ThermostatViewModel, thermostat: ThermostatDevice) {
         self.viewModel = viewModel
         self.thermostat = thermostat
+        
+        // Initialize state from thermostat
         _targetTemperature = State(initialValue: thermostat.targetTemperature)
         _selectedMode = State(initialValue: thermostat.mode)
     }
     
     var body: some View {
         ScrollView {
-            VStack(spacing: 30) {
-                // Temperature display
-                temperatureDisplay
+            VStack(spacing: 20) {
+                // Top info card
+                VStack(spacing: 8) {
+                    Text(thermostat.name)
+                        .font(.headline)
+                        .padding(.top, 8)
+                    
+                    Text("Current: \(thermostat.formattedTemperature(thermostat.currentTemperature, unit: temperatureUnit))")
+                        .font(.subheadline)
+                    
+                    // Temperature control
+                    ZStack {
+                        Circle()
+                            .stroke(lineWidth: 20)
+                            .opacity(0.3)
+                            .foregroundColor(modeColor)
+                        
+                        Circle()
+                            .trim(from: 0.0, to: CGFloat(min(targetTemperature / 40, 1.0)))
+                            .stroke(style: StrokeStyle(lineWidth: 20, lineCap: .round, lineJoin: .round))
+                            .foregroundColor(modeColor)
+                            .rotationEffect(Angle(degrees: 270.0))
+                            .animation(.linear, value: targetTemperature)
+                        
+                        VStack {
+                            Text("Target")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            Text(thermostat.formattedTemperature(targetTemperature, unit: temperatureUnit))
+                                .font(.system(size: 36, weight: .bold, design: .rounded))
+                                .foregroundColor(modeColor)
+                        }
+                    }
+                    .frame(width: 200, height: 200)
+                    .padding(.vertical)
+                    
+                    // Temperature slider
+                    VStack {
+                        Slider(
+                            value: $targetTemperature,
+                            in: 10...32,
+                            step: 0.5,
+                            onEditingChanged: { editing in
+                                isEditing = editing
+                                if !editing {
+                                    viewModel.setTemperature(for: thermostat, to: targetTemperature)
+                                }
+                            }
+                        )
+                        .accentColor(modeColor)
+                        .padding(.horizontal)
+                        
+                        HStack {
+                            Text("10°")
+                            Spacer()
+                            Text("32°")
+                        }
+                        .font(.caption)
+                        .padding(.horizontal)
+                    }
+                }
+                .padding()
+                .background(Color(.systemBackground))
+                .cornerRadius(12)
+                .shadow(radius: 2)
                 
-                // Temperature control
-                temperatureControl
+                // Mode selection
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Mode")
+                        .font(.headline)
+                    
+                    HStack(spacing: 10) {
+                        ForEach(thermostat.availableModes) { mode in
+                            ModeButton(
+                                mode: mode,
+                                isSelected: selectedMode == mode,
+                                action: {
+                                    selectedMode = mode
+                                    viewModel.setMode(for: thermostat, to: mode)
+                                }
+                            )
+                        }
+                    }
+                }
+                .padding()
+                .background(Color(.systemBackground))
+                .cornerRadius(12)
+                .shadow(radius: 2)
                 
-                // Mode selector
-                modeSelector
+                // Unit toggle
+                HStack {
+                    Text("Temperature Unit:")
+                    Picker("", selection: $temperatureUnit) {
+                        Text("Celsius").tag(TemperatureUnit.celsius)
+                        Text("Fahrenheit").tag(TemperatureUnit.fahrenheit)
+                    }
+                    .pickerStyle(SegmentedPickerStyle())
+                }
+                .padding()
+                .background(Color(.systemBackground))
+                .cornerRadius(12)
+                .shadow(radius: 2)
                 
-                // Apply button
-                applyButton
+                // Error display
+                if let error = viewModel.error {
+                    ErrorView(errorMessage: error)
+                }
+                
+                // Loading indicator
+                if viewModel.isLoading {
+                    LoadingView()
+                }
             }
             .padding()
         }
-        .navigationTitle(thermostat.name)
-        .navigationBarTitleDisplayMode(.inline)
-        .alert(isPresented: Binding<Bool>(
-            get: { viewModel.error != nil },
-            set: { if !$0 { viewModel.error = nil } }
-        )) {
-            Alert(
-                title: Text("Error"),
-                message: Text(viewModel.error ?? "Unknown error"),
-                dismissButton: .default(Text("OK"))
-            )
-        }
-        .overlay(
-            viewModel.isLoading ? 
-                ProgressView("Updating...")
-                .padding()
-                .background(Color.secondary.colorInvert())
-                .cornerRadius(10)
-                .shadow(radius: 5)
-                : nil
-        )
-    }
-    
-    // Temperature display with current temperature and mode
-    private var temperatureDisplay: some View {
-        VStack(spacing: 10) {
-            // Current temperature
-            HStack(alignment: .top, spacing: 0) {
-                Text("\(Int(thermostat.currentTemperature))")
-                    .font(.system(size: 80, weight: .semibold, design: .rounded))
-                
-                Text("°\(thermostat.units == .celsius ? "C" : "F")")
-                    .font(.system(size: 30, weight: .semibold, design: .rounded))
-                    .padding(.top, 10)
-            }
-            
-            Text("Current Temperature")
-                .font(.subheadline)
-                .foregroundColor(.secondary)
-            
-            // Mode indicator
-            Label(
-                title: { Text(modeText(for: thermostat.mode)) },
-                icon: { Image(systemName: iconName(for: thermostat.mode)) }
-            )
-            .foregroundColor(iconColor(for: thermostat.mode))
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .background(iconColor(for: thermostat.mode).opacity(0.2))
-            .cornerRadius(15)
-            .padding(.top, 5)
-        }
-        .padding()
-        .frame(maxWidth: .infinity)
-        .background(Color(UIColor.secondarySystemBackground))
-        .cornerRadius(15)
-    }
-    
-    // Temperature control slider
-    private var temperatureControl: some View {
-        VStack(spacing: 15) {
-            Text("Set Temperature")
-                .font(.headline)
-            
-            HStack(alignment: .top, spacing: 0) {
-                Text("\(Int(targetTemperature))")
-                    .font(.system(size: 60, weight: .semibold, design: .rounded))
-                
-                Text("°\(thermostat.units == .celsius ? "C" : "F")")
-                    .font(.system(size: 20, weight: .semibold, design: .rounded))
-                    .padding(.top, 10)
-            }
-            
-            // Temperature slider
-            Slider(value: $targetTemperature, in: 10...30, step: 0.5)
-                .accentColor(iconColor(for: selectedMode))
-            
-            // Quick preset buttons
-            HStack(spacing: 20) {
-                Button {
-                    targetTemperature = 18
-                } label: {
-                    Text("18°")
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 10)
-                        .background(Color.blue.opacity(0.2))
-                        .cornerRadius(8)
-                }
-                
-                Button {
-                    targetTemperature = 20
-                } label: {
-                    Text("20°")
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 10)
-                        .background(Color.blue.opacity(0.2))
-                        .cornerRadius(8)
-                }
-                
-                Button {
-                    targetTemperature = 22
-                } label: {
-                    Text("22°")
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 10)
-                        .background(Color.blue.opacity(0.2))
-                        .cornerRadius(8)
-                }
-                
-                Button {
-                    targetTemperature = 24
-                } label: {
-                    Text("24°")
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 10)
-                        .background(Color.blue.opacity(0.2))
-                        .cornerRadius(8)
-                }
+        .navigationTitle("Thermostat Details")
+        .background(Color(.systemGroupedBackground).edgesIgnoringSafeArea(.all))
+        // Update local state when the thermostat data refreshes
+        .onChange(of: thermostat.targetTemperature) { newValue in
+            if !isEditing {
+                targetTemperature = newValue
             }
         }
-        .padding()
-        .background(Color(UIColor.secondarySystemBackground))
-        .cornerRadius(15)
-    }
-    
-    // Mode selector
-    private var modeSelector: some View {
-        VStack(spacing: 15) {
-            Text("Mode")
-                .font(.headline)
-            
-            HStack(spacing: 12) {
-                ForEach([ThermostatDevice.ThermostatMode.heat, 
-                         .cool, 
-                         .auto, 
-                         .eco, 
-                         .off], id: \.self) { mode in
-                    Button {
-                        selectedMode = mode
-                    } label: {
-                        VStack(spacing: 6) {
-                            Image(systemName: iconName(for: mode))
-                                .font(.system(size: 20))
-                            
-                            Text(modeText(for: mode))
-                                .font(.caption)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .background(
-                            selectedMode == mode ?
-                                iconColor(for: mode).opacity(0.2) :
-                                Color(UIColor.tertiarySystemBackground)
-                        )
-                        .foregroundColor(
-                            selectedMode == mode ?
-                                iconColor(for: mode) :
-                                Color.primary
-                        )
-                        .cornerRadius(10)
-                    }
-                }
-            }
-        }
-        .padding()
-        .background(Color(UIColor.secondarySystemBackground))
-        .cornerRadius(15)
-    }
-    
-    // Apply button to save changes
-    private var applyButton: some View {
-        Button {
-            // Check if temperature or mode has changed
-            if targetTemperature != thermostat.targetTemperature {
-                viewModel.setTemperature(for: thermostat, to: targetTemperature)
-            }
-            
-            if selectedMode != thermostat.mode {
-                viewModel.setMode(for: thermostat, to: selectedMode)
-            }
-        } label: {
-            Text("Apply Changes")
-                .fontWeight(.semibold)
-                .frame(maxWidth: .infinity)
-                .padding()
-                .background(
-                    (targetTemperature != thermostat.targetTemperature || selectedMode != thermostat.mode) ?
-                        Color.blue :
-                        Color.gray
-                )
-                .foregroundColor(.white)
-                .cornerRadius(10)
-        }
-        .disabled(targetTemperature == thermostat.targetTemperature && selectedMode == thermostat.mode)
-    }
-    
-    // MARK: - Helper Functions
-    
-    // Icon name based on thermostat mode
-    private func iconName(for mode: ThermostatDevice.ThermostatMode) -> String {
-        switch mode {
-        case .heat:
-            return "flame.fill"
-        case .cool:
-            return "snowflake"
-        case .auto:
-            return "thermometer"
-        case .eco:
-            return "leaf.fill"
-        case .off:
-            return "power"
+        .onChange(of: thermostat.mode) { newValue in
+            selectedMode = newValue
         }
     }
     
-    // Color based on thermostat mode
-    private func iconColor(for mode: ThermostatDevice.ThermostatMode) -> Color {
-        switch mode {
+    private var modeColor: Color {
+        switch selectedMode {
         case .heat:
             return .orange
         case .cool:
             return .blue
         case .auto:
             return .purple
-        case .eco:
-            return .green
         case .off:
             return .gray
         }
     }
+}
+
+struct ModeButton: View {
+    let mode: ThermostatDevice.ThermostatMode
+    let isSelected: Bool
+    let action: () -> Void
     
-    // Text representation of mode
-    private func modeText(for mode: ThermostatDevice.ThermostatMode) -> String {
-        switch mode {
-        case .heat:
-            return "Heat"
-        case .cool:
-            return "Cool"
-        case .auto:
-            return "Auto"
-        case .eco:
-            return "Eco"
-        case .off:
-            return "Off"
+    var body: some View {
+        Button(action: action) {
+            VStack {
+                Image(systemName: mode.iconName)
+                    .font(.system(size: 24))
+                Text(mode.displayName)
+                    .font(.caption)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(10)
+            .background(isSelected ? colorForMode.opacity(0.2) : Color(.systemBackground))
+            .foregroundColor(isSelected ? colorForMode : .primary)
+            .cornerRadius(8)
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(isSelected ? colorForMode : Color.gray.opacity(0.3), lineWidth: 1)
+            )
         }
+    }
+    
+    private var colorForMode: Color {
+        switch mode {
+        case .heat: return .orange
+        case .cool: return .blue
+        case .auto: return .purple
+        case .off: return .gray
+        }
+    }
+}
+
+// Loading view
+struct LoadingView: View {
+    var body: some View {
+        HStack {
+            ProgressView()
+                .progressViewStyle(CircularProgressViewStyle())
+            Text("Processing...")
+                .foregroundColor(.secondary)
+                .padding(.leading, 10)
+        }
+        .padding()
+        .background(Color(.systemBackground))
+        .cornerRadius(8)
+    }
+}
+
+// Error view
+struct ErrorView: View {
+    let errorMessage: String
+    
+    var body: some View {
+        HStack {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundColor(.red)
+            Text(errorMessage)
+                .foregroundColor(.primary)
+        }
+        .padding()
+        .background(Color.red.opacity(0.1))
+        .cornerRadius(8)
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.red.opacity(0.5), lineWidth: 1)
+        )
     }
 }
 
