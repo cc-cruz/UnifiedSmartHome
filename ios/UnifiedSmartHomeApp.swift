@@ -2,55 +2,147 @@ import SwiftUI
 
 @main
 struct UnifiedSmartHomeApp: App {
-    // Create the view models at the app level
-    @StateObject private var thermostatViewModel = ThermostatViewModel()
+    // Initialize view models at app level to maintain state
+    @StateObject private var lockViewModel = createMockLockViewModel()
     
     var body: some Scene {
         WindowGroup {
-            ContentView()
-                .environmentObject(thermostatViewModel)
-                .onOpenURL { url in
-                    // Handle OAuth callback URLs
-                    handleURL(url)
-                }
+            MainTabView(lockViewModel: lockViewModel)
                 .onAppear {
-                    // Display setup instructions in debug mode
-                    #if DEBUG
-                    checkConfiguration()
-                    #endif
+                    // Setup any app-wide configurations here
+                    setupAppearance()
                 }
         }
     }
     
-    // Handle callback URLs (e.g., for OAuth)
-    private func handleURL(_ url: URL) {
-        if url.scheme == "unifiedsmarthome" {
-            // This is our OAuth callback, no action needed here
-            // The OAuth manager will handle extracting the code
-        }
+    private func setupAppearance() {
+        // Configure global UI appearance
+        UINavigationBar.appearance().tintColor = .systemBlue
     }
     
-    // Check if the app has been properly configured
-    private func checkConfiguration() {
-        let config = NestConfiguration()
+    // Create a mock LockViewModel for testing
+    private static func createMockLockViewModel() -> LockViewModel {
+        // Create dependencies
+        let networkService = NetworkService()
+        let keychainHelper = KeychainHelper.shared
+        let tokenManager = AugustTokenManager(keychainHelper: keychainHelper, networkService: networkService)
+        let augustAdapter = AugustLockAdapter(networkService: networkService, tokenManager: tokenManager)
         
-        if config.clientID.contains("[YOUR_") || 
-           config.clientSecret.contains("[YOUR_") || 
-           config.projectID.contains("[YOUR_") {
-            print("""
-            ⚠️ SETUP REQUIRED: You need to configure your Nest API credentials
+        let auditLogger = AuditLogger(
+            analyticsService: AnalyticsService.shared,
+            persistentStorage: CoreDataAuditLogStorage()
+        )
+        
+        let securityService = SecurityService(
+            userManager: UserManager.shared,
+            auditLogger: auditLogger
+        )
+        
+        let lockDAL = LockDAL(
+            lockAdapter: augustAdapter,
+            securityService: securityService,
+            auditLogger: auditLogger
+        )
+        
+        // Create and return the view model
+        return LockViewModel(
+            lockAdapter: augustAdapter,
+            lockDAL: lockDAL,
+            userManager: UserManager.shared,
+            analyticsService: AnalyticsService.shared
+        )
+    }
+}
+
+struct MainTabView: View {
+    @ObservedObject var lockViewModel: LockViewModel
+    @State private var selectedTab = 0
+    
+    var body: some View {
+        TabView(selection: $selectedTab) {
+            // Locks tab
+            NavigationView {
+                LockListView(viewModel: lockViewModel)
+                    .navigationTitle("Locks")
+            }
+            .tabItem {
+                Label("Locks", systemImage: "lock.fill")
+            }
+            .tag(0)
             
-            1. Open Info.plist
-            2. Replace the placeholder values:
-               - NestClientID: Your Nest API client ID
-               - NestClientSecret: Your Nest API client secret
-               - NestProjectID: Your Nest API project ID
-               
-            Ensure you've set up the Google Smart Device Management API in 
-            the Google Cloud Console and configured the OAuth consent screen.
+            // Dashboard tab (placeholder)
+            NavigationView {
+                Text("Dashboard Coming Soon")
+                    .navigationTitle("Dashboard")
+            }
+            .tabItem {
+                Label("Dashboard", systemImage: "square.grid.2x2")
+            }
+            .tag(1)
             
-            See the implementation guide documentation for more details.
-            """)
+            // Settings tab (placeholder)
+            NavigationView {
+                SettingsView()
+                    .navigationTitle("Settings")
+            }
+            .tabItem {
+                Label("Settings", systemImage: "gear")
+            }
+            .tag(2)
         }
+    }
+}
+
+// Simple placeholder for Settings view
+struct SettingsView: View {
+    @State private var isLoggedIn = UserManager.shared.isLoggedIn
+    
+    var body: some View {
+        List {
+            Section(header: Text("Account")) {
+                if isLoggedIn {
+                    Button("Log Out") {
+                        Task {
+                            await UserManager.shared.logout()
+                            isLoggedIn = UserManager.shared.isLoggedIn
+                        }
+                    }
+                    .foregroundColor(.red)
+                } else {
+                    Button("Log In") {
+                        // In a real app, this would show a login screen
+                        Task {
+                            // Simulate login for demo purposes
+                            await UserManager.shared.login(email: "demo@example.com", password: "password")
+                            isLoggedIn = UserManager.shared.isLoggedIn
+                        }
+                    }
+                }
+            }
+            
+            Section(header: Text("Preferences")) {
+                Toggle("Dark Mode", isOn: .constant(false))
+                Toggle("Notifications", isOn: .constant(true))
+                Toggle("Biometric Authentication", isOn: .constant(true))
+            }
+            
+            Section(header: Text("About")) {
+                HStack {
+                    Text("Version")
+                    Spacer()
+                    Text("1.0.0")
+                        .foregroundColor(.gray)
+                }
+                
+                NavigationLink(destination: Text("Privacy Policy would go here")) {
+                    Text("Privacy Policy")
+                }
+                
+                NavigationLink(destination: Text("Terms of Service would go here")) {
+                    Text("Terms of Service")
+                }
+            }
+        }
+        .listStyle(InsetGroupedListStyle())
     }
 } 

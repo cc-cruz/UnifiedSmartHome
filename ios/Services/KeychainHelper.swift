@@ -1,82 +1,115 @@
 import Foundation
 import Security
 
-final class KeychainHelper {
-    static let standard = KeychainHelper()
+class KeychainHelper {
+    static let shared = KeychainHelper()
+    
     private init() {}
     
-    func save<T>(_ data: T, service: String, account: String) where T: Codable {
-        do {
-            // Convert data to JSON
-            let data = try JSONEncoder().encode(data)
-            
-            // Create query dictionary
-            var query = [
-                kSecValueData: data,
-                kSecClass: kSecClassGenericPassword,
-                kSecAttrService: service,
-                kSecAttrAccount: account,
-            ] as [CFString: Any]
-            
-            // Add the access group if any
-            
-            // Check if item already exists
-            let status = SecItemAdd(query as CFDictionary, nil)
-            
-            if status == errSecDuplicateItem {
-                // Item already exists, so update it
-                let attributes = [
-                    kSecValueData: data
-                ] as [CFString: Any]
-                
-                SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
-            } else if status != errSecSuccess {
-                print("Error saving to Keychain: \(status)")
-            }
-        } catch {
-            print("Error encoding data for Keychain: \(error)")
+    // Save data to Keychain
+    func save(_ data: Data, service: String, account: String) throws {
+        // Create query dictionary
+        let query = [
+            kSecValueData: data,
+            kSecAttrService: service,
+            kSecAttrAccount: account,
+            kSecClass: kSecClassGenericPassword
+        ] as CFDictionary
+        
+        // Delete any existing item
+        SecItemDelete(query)
+        
+        // Add the new item
+        let status = SecItemAdd(query, nil)
+        
+        // Check for errors
+        guard status == errSecSuccess else {
+            throw KeychainError.saveError(status: status)
         }
     }
     
-    func read<T>(service: String, account: String, type: T.Type) -> T? where T: Codable {
+    // Get data from Keychain
+    func get(service: String, account: String) throws -> Data? {
+        // Create query dictionary
         let query = [
             kSecAttrService: service,
             kSecAttrAccount: account,
             kSecClass: kSecClassGenericPassword,
             kSecReturnData: true
-        ] as [CFString: Any]
+        ] as CFDictionary
         
         var result: AnyObject?
-        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        let status = SecItemCopyMatching(query, &result)
         
-        guard status == errSecSuccess, let data = result as? Data else {
-            if status != errSecItemNotFound {
-                print("Error reading from Keychain: \(status)")
-            }
+        // Check for errors
+        if status == errSecItemNotFound {
             return nil
         }
         
-        do {
-            let decoder = JSONDecoder()
-            let item = try decoder.decode(type, from: data)
-            return item
-        } catch {
-            print("Error decoding data from Keychain: \(error)")
-            return nil
+        guard status == errSecSuccess else {
+            throw KeychainError.readError(status: status)
         }
+        
+        return result as? Data
     }
     
-    func delete(service: String, account: String) {
+    // Delete data from Keychain
+    func delete(service: String, account: String) throws {
+        // Create query dictionary
         let query = [
             kSecAttrService: service,
             kSecAttrAccount: account,
-            kSecClass: kSecClassGenericPassword,
-        ] as [CFString: Any]
+            kSecClass: kSecClassGenericPassword
+        ] as CFDictionary
         
-        let status = SecItemDelete(query as CFDictionary)
+        // Delete the item
+        let status = SecItemDelete(query)
         
-        if status != errSecSuccess && status != errSecItemNotFound {
-            print("Error deleting from Keychain: \(status)")
+        // Check for errors (ignore "not found" error)
+        guard status == errSecSuccess || status == errSecItemNotFound else {
+            throw KeychainError.deleteError(status: status)
+        }
+    }
+    
+    // Update data in Keychain
+    func update(_ data: Data, service: String, account: String) throws {
+        // Create query dictionary
+        let query = [
+            kSecAttrService: service,
+            kSecAttrAccount: account,
+            kSecClass: kSecClassGenericPassword
+        ] as CFDictionary
+        
+        // Create update dictionary
+        let attributes = [kSecValueData: data] as CFDictionary
+        
+        // Update the item
+        let status = SecItemUpdate(query, attributes)
+        
+        // Check for errors
+        guard status == errSecSuccess else {
+            throw KeychainError.updateError(status: status)
+        }
+    }
+}
+
+// Keychain error types
+enum KeychainError: Error {
+    case saveError(status: OSStatus)
+    case readError(status: OSStatus)
+    case deleteError(status: OSStatus)
+    case updateError(status: OSStatus)
+    
+    var localizedDescription: String {
+        switch self {
+        case .saveError(let status):
+            return "Failed to save to Keychain: \(status)"
+        case .readError(let status):
+            return "Failed to read from Keychain: \(status)"
+        case .deleteError(let status):
+            return "Failed to delete from Keychain: \(status)"
+        case .updateError(let status):
+            return "Failed to update Keychain: \(status)"
         }
     }
 } 

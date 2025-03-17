@@ -5,14 +5,26 @@ struct User: Codable, Identifiable {
     let email: String
     let firstName: String
     let lastName: String
-    let role: UserRole
-    var properties: [Property]?
+    var role: Role
+    var properties: [String]
+    var assignedRooms: [String]
+    var guestAccess: GuestAccess?
     
-    enum UserRole: String, Codable {
+    enum Role: String, Codable {
         case owner = "OWNER"
         case propertyManager = "PROPERTY_MANAGER"
         case tenant = "TENANT"
         case guest = "GUEST"
+    }
+    
+    struct GuestAccess: Codable {
+        let validFrom: Date
+        let validUntil: Date
+        let deviceIds: [String]
+    }
+    
+    var fullName: String {
+        return "\(firstName) \(lastName)"
     }
 }
 

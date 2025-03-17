@@ -1,54 +1,110 @@
 import Foundation
 import Combine
 
-enum APIError: Error {
-    case invalidURL
-    case invalidResponse
-    case networkError(Error)
-    case decodingError(Error)
-    case serverError(Int)
-    case unknown
-    
-    var localizedDescription: String {
-        switch self {
-        case .invalidURL:
-            return "Invalid URL"
-        case .invalidResponse:
-            return "Invalid response"
-        case .networkError(let error):
-            return "Network error: \(error.localizedDescription)"
-        case .decodingError(let error):
-            return "Failed to decode response: \(error.localizedDescription)"
-        case .serverError(let code):
-            return "Server error with code: \(code)"
-        case .unknown:
-            return "An unknown error occurred"
-        }
-    }
-}
-
+// API service for handling network requests
 class APIService {
-    private let baseURL = "http://localhost:3000/api"
-    private let session = URLSession.shared
-    private let jsonDecoder = JSONDecoder()
+    // Base URL for API requests
+    private let baseURL = "https://api.unifiedsmarthome.com"
     
-    // MARK: - Authentication
-    func login(with credentials: LoginCredentials) -> AnyPublisher<AuthResponse, APIError> {
-        let endpoint = "/auth/login"
+    // Shared URLSession
+    private let session = URLSession.shared
+    
+    // JSON decoder with configuration
+    private let jsonDecoder: JSONDecoder = {
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        decoder.dateDecodingStrategy = .iso8601
+        return decoder
+    }()
+    
+    // MARK: - Authentication Methods
+    
+    // Login with email and password
+    func login(with credentials: LoginCredentials) -> AnyPublisher<AuthResponse, Error> {
+        // In a real implementation, this would make an API call
+        // For now, we'll simulate a successful login
         
-        return makePostRequest(to: endpoint, with: credentials)
+        return Future<AuthResponse, Error> { promise in
+            // Simulate network delay
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                // Create a mock user
+                let user = User(
+                    id: "user1",
+                    email: credentials.email,
+                    firstName: "Demo",
+                    lastName: "User",
+                    role: .owner,
+                    properties: [],
+                    assignedRooms: []
+                )
+                
+                // Create a mock token
+                let token = "mock_token_\(UUID().uuidString)"
+                
+                // Return the response
+                promise(.success(AuthResponse(user: user, token: token)))
+            }
+        }
+        .eraseToAnyPublisher()
     }
     
-    func register(firstName: String, lastName: String, email: String, password: String) -> AnyPublisher<AuthResponse, APIError> {
-        let endpoint = "/auth/register"
-        let body = [
-            "firstName": firstName,
-            "lastName": lastName,
-            "email": email,
-            "password": password
-        ]
+    // Validate token
+    func validateToken(token: String) -> AnyPublisher<User, Error> {
+        // In a real implementation, this would validate the token with the API
+        // For now, we'll simulate a valid token
         
-        return makePostRequest(to: endpoint, with: body)
+        return Future<User, Error> { promise in
+            // Simulate network delay
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                // Create a mock user
+                let user = User(
+                    id: "user1",
+                    email: "demo@example.com",
+                    firstName: "Demo",
+                    lastName: "User",
+                    role: .owner,
+                    properties: [],
+                    assignedRooms: []
+                )
+                
+                // Return the user
+                promise(.success(user))
+            }
+        }
+        .eraseToAnyPublisher()
+    }
+    
+    // MARK: - User Methods
+    
+    // Get user by ID
+    func getUser(id: String) async throws -> User {
+        // In a real implementation, this would fetch the user from the API
+        // For now, we'll return a mock user
+        
+        // Simulate network delay
+        try await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
+        
+        // Return a mock user
+        return User(
+            id: id,
+            email: "user\(id)@example.com",
+            firstName: "User",
+            lastName: "\(id)",
+            role: .owner,
+            properties: [],
+            assignedRooms: []
+        )
+    }
+    
+    // Update user role
+    func updateUserRole(userId: String, role: String) async throws {
+        // In a real implementation, this would update the user's role via the API
+        // For now, we'll just simulate a delay
+        
+        // Simulate network delay
+        try await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
+        
+        // If we get here, the operation was successful
     }
     
     // MARK: - Properties
