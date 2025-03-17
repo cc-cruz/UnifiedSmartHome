@@ -33,6 +33,10 @@ let package = Package(
             name: "UnifiedSmartHome",
             dependencies: ["Models"],
             path: "Sources",
-            exclude: ["Models"])
+            exclude: ["Models"]),
+        .testTarget(
+            name: "ModelsTests",
+            dependencies: ["Models"],
+            path: "Tests/ModelsTests")
     ]
 )
