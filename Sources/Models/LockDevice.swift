@@ -89,6 +89,31 @@ public class LockDevice: AbstractDevice {
         self.batteryLevel = min(100, max(0, level))
     }
     
+    // MARK: - Copying
+    
+    /// Creates a copy of the lock device
+    public func copy() -> LockDevice {
+        let newDevice = LockDevice(
+            id: id,
+            name: name,
+            room: room,
+            manufacturer: manufacturer,
+            model: model,
+            firmwareVersion: firmwareVersion,
+            isOnline: isOnline,
+            lastSeen: lastSeen,
+            dateAdded: dateAdded,
+            metadata: metadata,
+            currentState: currentState,
+            batteryLevel: batteryLevel,
+            lastStateChange: lastStateChange,
+            isRemoteOperationEnabled: isRemoteOperationEnabled,
+            accessHistory: accessHistory
+        )
+        
+        return newDevice
+    }
+    
     // Security audit trail
     public struct LockAccessRecord: Identifiable {
         public let id = UUID()
