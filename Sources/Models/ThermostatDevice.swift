@@ -1,71 +1,68 @@
 import Foundation
 
-public enum ThermostatMode: String, Codable, Equatable {
+public enum ThermostatMode: String, Codable {
     case off = "OFF"
     case heat = "HEAT"
     case cool = "COOL"
     case auto = "AUTO"
-    case eco = "ECO"
     case fanOnly = "FAN_ONLY"
 }
 
-public enum ThermostatFanMode: String, Codable, Equatable {
+public enum ThermostatFanMode: String, Codable {
     case auto = "AUTO"
     case on = "ON"
     case circulate = "CIRCULATE"
-    case low = "LOW"
-    case medium = "MEDIUM"
-    case high = "HIGH"
 }
 
 /// Represents a thermostat device with heating and cooling capabilities
 public class ThermostatDevice: AbstractDevice {
     /// Current temperature reading
-    public var currentTemperature: Double?
+    @Published public var currentTemperature: Double?
     
     /// Target temperature setting
-    public var targetTemperature: Double?
+    @Published public var targetTemperature: Double?
     
     /// Current mode of operation
-    public var mode: ThermostatMode?
+    @Published public var mode: ThermostatMode
     
     /// Current humidity reading (if supported)
-    public var humidity: Double?
+    @Published public var humidity: Double?
     
     /// Whether the thermostat is currently heating
-    public var isHeating: Bool
+    @Published public var isHeating: Bool
     
     /// Whether the thermostat is currently cooling
-    public var isCooling: Bool
+    @Published public var isCooling: Bool
     
     /// Whether the fan is currently running
-    public var isFanRunning: Bool
+    @Published public var isFanRunning: Bool
     
     /// Fan mode setting
-    public var fanMode: ThermostatFanMode?
+    @Published public var fanMode: ThermostatFanMode
     
     /// Temperature range supported by the device
     public let temperatureRange: ClosedRange<Double>
     
     /// Initialize a new thermostat device
     public init(
-        id: String?,
+        id: String,
         name: String,
+        room: String,
         manufacturer: String,
-        model: String = "Thermostat",
-        firmwareVersion: String? = nil,
-        serviceName: String,
+        model: String,
+        firmwareVersion: String,
         isOnline: Bool = true,
+        lastSeen: Date? = nil,
         dateAdded: Date = Date(),
         metadata: [String: String] = [:],
         currentTemperature: Double? = nil,
         targetTemperature: Double? = nil,
-        mode: ThermostatMode? = nil,
+        mode: ThermostatMode = .off,
         humidity: Double? = nil,
         isHeating: Bool = false,
         isCooling: Bool = false,
         isFanRunning: Bool = false,
-        fanMode: ThermostatFanMode? = nil,
+        fanMode: ThermostatFanMode = .auto,
         temperatureRange: ClosedRange<Double> = 40...90
     ) {
         self.currentTemperature = currentTemperature
@@ -81,52 +78,77 @@ public class ThermostatDevice: AbstractDevice {
         super.init(
             id: id,
             name: name,
+            room: room,
             manufacturer: manufacturer,
             model: model,
             firmwareVersion: firmwareVersion,
-            serviceName: serviceName,
             isOnline: isOnline,
+            lastSeen: lastSeen,
             dateAdded: dateAdded,
             metadata: metadata
         )
     }
     
-    required public init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
+    /// Set a new target temperature
+    /// - Parameter temperature: The desired temperature
+    /// - Returns: True if the temperature was set successfully
+    public func setTargetTemperature(_ temperature: Double) -> Bool {
+        // Validate the temperature is within the supported range
+        guard temperatureRange.contains(temperature) else {
+            return false
+        }
         
-        currentTemperature = try container.decodeIfPresent(Double.self, forKey: .currentTemperature)
-        targetTemperature = try container.decodeIfPresent(Double.self, forKey: .targetTemperature)
-        mode = try container.decodeIfPresent(ThermostatMode.self, forKey: .mode)
-        humidity = try container.decodeIfPresent(Double.self, forKey: .humidity)
-        isHeating = try container.decode(Bool.self, forKey: .isHeating)
-        isCooling = try container.decode(Bool.self, forKey: .isCooling)
-        isFanRunning = try container.decode(Bool.self, forKey: .isFanRunning)
-        fanMode = try container.decodeIfPresent(ThermostatFanMode.self, forKey: .fanMode)
-        
-        // Default temperature range if not provided
-        let minTemp = try container.decodeIfPresent(Double.self, forKey: .minTemperature) ?? 40.0
-        let maxTemp = try container.decodeIfPresent(Double.self, forKey: .maxTemperature) ?? 90.0
-        temperatureRange = minTemp...maxTemp
-        
-        try super.init(from: decoder)
+        targetTemperature = temperature
+        return true
     }
     
-    private enum CodingKeys: String, CodingKey {
-        case currentTemperature, targetTemperature, mode, humidity
-        case isHeating, isCooling, isFanRunning, fanMode
-        case minTemperature, maxTemperature
+    /// Set a new thermostat mode
+    /// - Parameter newMode: The desired mode
+    public func setMode(_ newMode: ThermostatMode) {
+        mode = newMode
+        
+        // Reset heating/cooling status based on mode
+        switch newMode {
+        case .off:
+            isHeating = false
+            isCooling = false
+        case .heat:
+            isHeating = true
+            isCooling = false
+        case .cool:
+            isHeating = false
+            isCooling = true
+        case .auto:
+            // In auto mode, heating/cooling depends on current vs. target temp
+            if let current = currentTemperature, let target = targetTemperature {
+                isHeating = current < target
+                isCooling = current > target
+            }
+        case .fanOnly:
+            isHeating = false
+            isCooling = false
+            isFanRunning = true
+        }
+    }
+    
+    /// Set the fan mode
+    /// - Parameter newMode: The desired fan mode
+    public func setFanMode(_ newMode: ThermostatFanMode) {
+        fanMode = newMode
+        isFanRunning = newMode != .auto || isHeating || isCooling
     }
     
     /// Creates a copy of the thermostat device
-    public override func copy() -> AbstractDevice {
+    public func copy() -> ThermostatDevice {
         return ThermostatDevice(
             id: id,
             name: name,
+            room: room,
             manufacturer: manufacturer,
             model: model,
             firmwareVersion: firmwareVersion,
-            serviceName: serviceName,
             isOnline: isOnline,
+            lastSeen: lastSeen,
             dateAdded: dateAdded,
             metadata: metadata,
             currentTemperature: currentTemperature,
@@ -140,9 +162,4 @@ public class ThermostatDevice: AbstractDevice {
             temperatureRange: temperatureRange
         )
     }
-}
-
-enum TemperatureUnit {
-    case celsius
-    case fahrenheit
 } 

@@ -46,20 +46,6 @@ public struct DeviceState {
         self.timestamp = timestamp
         self.attributes = attributes
     }
-    
-    /// Convenience initializer for online status and attributes
-    public init(isOnline: Bool, attributes: [String: AnyCodable]) {
-        self.deviceId = ""
-        self.deviceType = ""
-        self.timestamp = Date()
-        
-        // Convert AnyCodable attributes to DeviceAttribute
-        var deviceAttributes: [String: DeviceAttribute] = [:]
-        for (key, value) in attributes {
-            deviceAttributes[key] = DeviceAttribute(value: value)
-        }
-        self.attributes = deviceAttributes
-    }
 }
 
 /// Represents a single device attribute with a value and metadata

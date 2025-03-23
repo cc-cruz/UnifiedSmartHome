@@ -19,7 +19,10 @@ let package = Package(
             targets: ["Models"]),
         .library(
             name: "Adapters",
-            targets: ["Adapters"])
+            targets: ["Adapters"]),
+        .library(
+            name: "Helpers",
+            targets: ["Helpers"])
     ],
     dependencies: [
         // Dependencies declare other packages that this package depends on.
@@ -31,14 +34,18 @@ let package = Package(
         .target(
             name: "Models",
             dependencies: [],
-            path: "Sources/Models"),
+            path: "ios/Models"),
+        .target(
+            name: "Helpers",
+            dependencies: [],
+            path: "ios/Helpers"),
         .target(
             name: "Adapters",
-            dependencies: ["Models"],
+            dependencies: ["Models", "Helpers"],
             path: "ios/Adapters"),
         .executableTarget(
             name: "UnifiedSmartHome",
-            dependencies: ["Models", "Adapters"],
+            dependencies: ["Models", "Adapters", "Helpers"],
             path: "Sources",
             exclude: ["Models"]),
         .testTarget(
@@ -47,7 +54,7 @@ let package = Package(
             path: "Tests/ModelsTests"),
         .testTarget(
             name: "AdaptersTests",
-            dependencies: ["Adapters", "Models"],
+            dependencies: ["Adapters", "Models", "Helpers"],
             path: "Tests/AdaptersTests")
     ]
 )

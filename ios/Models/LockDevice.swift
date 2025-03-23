@@ -1,31 +1,40 @@
 import Foundation
 
-class LockDevice: AbstractDevice {
-    enum LockState: String, Codable {
-        case locked = "LOCKED"
-        case unlocked = "UNLOCKED"
-        case jammed = "JAMMED"
-        case unknown = "UNKNOWN"
-    }
+/// Represents different possible lock states
+public enum LockState: String, Codable {
+    case locked = "locked"
+    case unlocked = "unlocked"
+    case jammed = "jammed"
+    case unknown = "unknown"
+}
+
+/// A smart lock device that can be locked and unlocked
+public class LockDevice: AbstractDevice {
+    // MARK: - Properties
     
-    enum LockOperation: String, Codable {
-        case lock = "LOCK"
-        case unlock = "UNLOCK"
-    }
+    /// Current state of the lock
+    public var currentState: LockState
     
-    private(set) var currentState: LockState
-    private(set) var batteryLevel: Int // 0-100
-    private(set) var lastStateChange: Date?
-    private(set) var isRemoteOperationEnabled: Bool
+    /// Battery level percentage 0-100
+    public var batteryLevel: Int?
     
-    // Access history for security audit
-    private(set) var accessHistory: [LockAccessRecord]
+    /// Last time the lock's state changed
+    public var lastStateChange: Date?
     
-    init(id: String, name: String, manufacturer: Device.Manufacturer, 
-         roomId: String?, propertyId: String, status: Device.DeviceStatus,
-         capabilities: [Device.DeviceCapability], currentState: LockState,
-         batteryLevel: Int, lastStateChange: Date?, isRemoteOperationEnabled: Bool,
-         accessHistory: [LockAccessRecord] = []) {
+    /// Whether the lock can be operated remotely
+    public var isRemoteOperationEnabled: Bool
+    
+    /// Lock access history records
+    public var accessHistory: [LockAccessRecord]
+    
+    // MARK: - Initializer
+    
+    public init(id: String?, name: String, manufacturer: String = "Generic", 
+         model: String = "Smart Lock", firmwareVersion: String? = nil, 
+         serviceName: String, isOnline: Bool = true, dateAdded: Date = Date(), 
+         metadata: [String: String] = [:], currentState: LockState = .unknown, 
+         batteryLevel: Int? = nil, lastStateChange: Date? = nil, 
+         isRemoteOperationEnabled: Bool = true, accessHistory: [LockAccessRecord] = []) {
         
         self.currentState = currentState
         self.batteryLevel = batteryLevel
@@ -33,41 +42,99 @@ class LockDevice: AbstractDevice {
         self.isRemoteOperationEnabled = isRemoteOperationEnabled
         self.accessHistory = accessHistory
         
-        super.init(
+        super.init(id: id, name: name, manufacturer: manufacturer, model: model, 
+              firmwareVersion: firmwareVersion, serviceName: serviceName, 
+              isOnline: isOnline, dateAdded: dateAdded, metadata: metadata)
+    }
+    
+    // MARK: - Methods
+    
+    /// Creates a copy of this device
+    public override func copy() -> AbstractDevice {
+        return LockDevice(
             id: id,
             name: name,
             manufacturer: manufacturer,
-            type: .lock,
-            roomId: roomId,
-            propertyId: propertyId,
-            status: status,
-            capabilities: capabilities
+            model: model,
+            firmwareVersion: firmwareVersion,
+            serviceName: serviceName,
+            isOnline: isOnline,
+            dateAdded: dateAdded,
+            metadata: metadata,
+            currentState: currentState,
+            batteryLevel: batteryLevel,
+            lastStateChange: lastStateChange,
+            isRemoteOperationEnabled: isRemoteOperationEnabled,
+            accessHistory: accessHistory
         )
     }
     
-    required init(from decoder: Decoder) throws {
+    // MARK: - Nested Types
+    
+    /// Record of lock access activity
+    public struct LockAccessRecord: Codable, Equatable {
+        /// Time of access
+        public let timestamp: Date
+        
+        /// Type of operation performed
+        public let operation: LockOperation
+        
+        /// User ID who performed or requested the operation
+        public let userId: String
+        
+        /// Whether the operation succeeded
+        public let success: Bool
+        
+        /// Error message if any
+        public let errorMessage: String?
+        
+        /// Additional context about the access
+        public let metadata: [String: String]?
+        
+        public init(timestamp: Date, operation: LockOperation, userId: String, success: Bool, 
+             errorMessage: String? = nil, metadata: [String: String]? = nil) {
+            self.timestamp = timestamp
+            self.operation = operation
+            self.userId = userId
+            self.success = success
+            self.errorMessage = errorMessage
+            self.metadata = metadata
+        }
+    }
+    
+    /// Types of lock operations that can be performed
+    public enum LockOperation: String, Codable {
+        case lock = "lock"
+        case unlock = "unlock"
+        case autoLock = "auto_lock"
+    }
+    
+    // MARK: - Coding
+    
+    enum CodingKeys: String, CodingKey {
+        case currentState, batteryLevel, lastStateChange, isRemoteOperationEnabled, accessHistory
+    }
+    
+    public required init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        currentState = try container.decode(LockState.self, forKey: .currentState)
-        batteryLevel = try container.decode(Int.self, forKey: .batteryLevel)
-        lastStateChange = try container.decodeIfPresent(Date.self, forKey: .lastStateChange)
-        isRemoteOperationEnabled = try container.decode(Bool.self, forKey: .isRemoteOperationEnabled)
-        accessHistory = try container.decodeIfPresent([LockAccessRecord].self, forKey: .accessHistory) ?? []
+        self.currentState = try container.decodeIfPresent(LockState.self, forKey: .currentState) ?? .unknown
+        self.batteryLevel = try container.decodeIfPresent(Int.self, forKey: .batteryLevel)
+        self.lastStateChange = try container.decodeIfPresent(Date.self, forKey: .lastStateChange)
+        self.isRemoteOperationEnabled = try container.decodeIfPresent(Bool.self, forKey: .isRemoteOperationEnabled) ?? true
+        self.accessHistory = try container.decodeIfPresent([LockAccessRecord].self, forKey: .accessHistory) ?? []
         
         try super.init(from: decoder)
     }
     
-    override func encode(to encoder: Encoder) throws {
-        try super.encode(to: encoder)
+    public override func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(currentState, forKey: .currentState)
-        try container.encode(batteryLevel, forKey: .batteryLevel)
+        try container.encodeIfPresent(batteryLevel, forKey: .batteryLevel)
         try container.encodeIfPresent(lastStateChange, forKey: .lastStateChange)
         try container.encode(isRemoteOperationEnabled, forKey: .isRemoteOperationEnabled)
         try container.encode(accessHistory, forKey: .accessHistory)
-    }
-    
-    private enum CodingKeys: String, CodingKey {
-        case currentState, batteryLevel, lastStateChange, isRemoteOperationEnabled, accessHistory
+        
+        try super.encode(to: encoder)
     }
     
     // Key methods
@@ -94,24 +161,6 @@ class LockDevice: AbstractDevice {
     // Battery monitoring
     func updateBatteryLevel(_ level: Int) {
         self.batteryLevel = min(100, max(0, level))
-    }
-    
-    // Security audit trail
-    struct LockAccessRecord: Codable, Identifiable {
-        let id = UUID()
-        let timestamp: Date
-        let operation: LockOperation
-        let userId: String
-        let success: Bool
-        let failureReason: String?
-        
-        init(timestamp: Date, operation: LockOperation, userId: String, success: Bool, failureReason: String? = nil) {
-            self.timestamp = timestamp
-            self.operation = operation
-            self.userId = userId
-            self.success = success
-            self.failureReason = failureReason
-        }
     }
     
     // Security checks
