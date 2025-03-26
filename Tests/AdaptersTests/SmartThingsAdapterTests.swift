@@ -544,6 +544,168 @@ final class SmartThingsAdapterTests: XCTestCase {
         // Assert
         // No exception means success
     }
+    
+    // MARK: - Scene Management Tests
+    
+    func testCreateScene() async throws {
+        // Arrange
+        let name = "Evening Mode"
+        let actions = [
+            SmartThingsSceneAction(
+                deviceId: "device-123",
+                component: "main",
+                capability: "switch",
+                command: "on",
+                arguments: nil
+            ),
+            SmartThingsSceneAction(
+                deviceId: "device-456",
+                component: "main",
+                capability: "switchLevel",
+                command: "setLevel",
+                arguments: ["level": AnyCodable(80)]
+            )
+        ]
+        let roomId = "room-123"
+        
+        let mockResponse = SmartThingsSceneResponse(
+            sceneId: "scene-123",
+            name: name,
+            actions: actions,
+            roomId: roomId,
+            status: "ACTIVE",
+            createdAt: ISO8601DateFormatter().string(from: Date()),
+            updatedAt: ISO8601DateFormatter().string(from: Date())
+        )
+        
+        mockNetworkService.mockResponses["https://api.smartthings.com/v1/scenes"] = mockResponse
+        
+        // Act
+        let response = try await adapter.createScene(name: name, actions: actions, roomId: roomId)
+        
+        // Assert
+        XCTAssertEqual(response.sceneId, "scene-123")
+        XCTAssertEqual(response.name, name)
+        XCTAssertEqual(response.actions.count, 2)
+        XCTAssertEqual(response.roomId, roomId)
+        XCTAssertEqual(response.status, "ACTIVE")
+    }
+    
+    func testUpdateScene() async throws {
+        // Arrange
+        let sceneId = "scene-123"
+        let newName = "Updated Evening Mode"
+        let newActions = [
+            SmartThingsSceneAction(
+                deviceId: "device-789",
+                component: "main",
+                capability: "switch",
+                command: "on",
+                arguments: nil
+            )
+        ]
+        
+        let mockResponse = SmartThingsSceneResponse(
+            sceneId: sceneId,
+            name: newName,
+            actions: newActions,
+            roomId: nil,
+            status: "ACTIVE",
+            createdAt: ISO8601DateFormatter().string(from: Date()),
+            updatedAt: ISO8601DateFormatter().string(from: Date())
+        )
+        
+        mockNetworkService.mockResponses["https://api.smartthings.com/v1/scenes/\(sceneId)"] = mockResponse
+        
+        // Act
+        let response = try await adapter.updateScene(
+            sceneId: sceneId,
+            name: newName,
+            actions: newActions
+        )
+        
+        // Assert
+        XCTAssertEqual(response.sceneId, sceneId)
+        XCTAssertEqual(response.name, newName)
+        XCTAssertEqual(response.actions.count, 1)
+        XCTAssertEqual(response.actions[0].deviceId, "device-789")
+    }
+    
+    func testDeleteScene() async throws {
+        // Arrange
+        let sceneId = "scene-123"
+        
+        // Configure mock network service to succeed
+        mockNetworkService.requestHandler = { request in
+            guard let url = request.url, url.absoluteString.contains(sceneId) else {
+                throw URLError(.badURL)
+            }
+            
+            // Successful response
+            return (Data(), HTTPURLResponse(url: url, statusCode: 204, httpVersion: nil, headerFields: nil)!)
+        }
+        
+        // Act
+        try await adapter.deleteScene(sceneId: sceneId)
+        
+        // Assert
+        // No exception means success
+    }
+    
+    func testListScenes() async throws {
+        // Arrange
+        let mockResponse = [
+            SmartThingsSceneResponse(
+                sceneId: "scene-123",
+                name: "Evening Mode",
+                actions: [],
+                roomId: "room-123",
+                status: "ACTIVE",
+                createdAt: ISO8601DateFormatter().string(from: Date()),
+                updatedAt: ISO8601DateFormatter().string(from: Date())
+            ),
+            SmartThingsSceneResponse(
+                sceneId: "scene-456",
+                name: "Morning Mode",
+                actions: [],
+                roomId: "room-456",
+                status: "ACTIVE",
+                createdAt: ISO8601DateFormatter().string(from: Date()),
+                updatedAt: ISO8601DateFormatter().string(from: Date())
+            )
+        ]
+        
+        mockNetworkService.mockResponses["https://api.smartthings.com/v1/scenes"] = mockResponse
+        
+        // Act
+        let response = try await adapter.listScenes()
+        
+        // Assert
+        XCTAssertEqual(response.count, 2)
+        XCTAssertEqual(response[0].sceneId, "scene-123")
+        XCTAssertEqual(response[1].sceneId, "scene-456")
+    }
+    
+    func testExecuteScene() async throws {
+        // Arrange
+        let sceneId = "scene-123"
+        
+        let mockResponse = SmartThingsSceneExecutionResponse(
+            status: "SUCCESS",
+            message: "Scene executed successfully",
+            executionId: "execution-123"
+        )
+        
+        mockNetworkService.mockResponses["https://api.smartthings.com/v1/scenes/\(sceneId)/execute"] = mockResponse
+        
+        // Act
+        let response = try await adapter.executeScene(sceneId: sceneId)
+        
+        // Assert
+        XCTAssertEqual(response.status, "SUCCESS")
+        XCTAssertEqual(response.message, "Scene executed successfully")
+        XCTAssertEqual(response.executionId, "execution-123")
+    }
 }
 
 // MARK: - Mock Classes

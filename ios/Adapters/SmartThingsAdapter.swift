@@ -295,6 +295,114 @@ class SmartThingsAdapter: SmartDeviceAdapter {
         ).serializingDecodable(EmptyResponse.self).value
     }
     
+    // MARK: - Scene Management
+    
+    func createScene(name: String, actions: [SmartThingsSceneAction], roomId: String? = nil) async throws -> SmartThingsSceneResponse {
+        guard let token = authToken else {
+            throw DeviceOperationError.authenticationFailed
+        }
+        
+        let headers: HTTPHeaders = [
+            "Authorization": "Bearer \(token)",
+            "Content-Type": "application/json"
+        ]
+        
+        let request = SmartThingsSceneRequest(
+            name: name,
+            actions: actions,
+            roomId: roomId
+        )
+        
+        let response = try await session.request(
+            "\(baseURL)/scenes",
+            method: .post,
+            headers: headers,
+            body: try JSONEncoder().encode(request)
+        ).serializingDecodable(SmartThingsSceneResponse.self).value
+        
+        return response
+    }
+    
+    func updateScene(sceneId: String, name: String? = nil, actions: [SmartThingsSceneAction]? = nil, roomId: String? = nil) async throws -> SmartThingsSceneResponse {
+        guard let token = authToken else {
+            throw DeviceOperationError.authenticationFailed
+        }
+        
+        let headers: HTTPHeaders = [
+            "Authorization": "Bearer \(token)",
+            "Content-Type": "application/json"
+        ]
+        
+        var request: [String: Any] = [:]
+        if let name = name { request["name"] = name }
+        if let actions = actions { request["actions"] = actions }
+        if let roomId = roomId { request["roomId"] = roomId }
+        
+        let response = try await session.request(
+            "\(baseURL)/scenes/\(sceneId)",
+            method: .put,
+            headers: headers,
+            body: try JSONSerialization.data(withJSONObject: request)
+        ).serializingDecodable(SmartThingsSceneResponse.self).value
+        
+        return response
+    }
+    
+    func deleteScene(sceneId: String) async throws {
+        guard let token = authToken else {
+            throw DeviceOperationError.authenticationFailed
+        }
+        
+        let headers: HTTPHeaders = [
+            "Authorization": "Bearer \(token)",
+            "Content-Type": "application/json"
+        ]
+        
+        _ = try await session.request(
+            "\(baseURL)/scenes/\(sceneId)",
+            method: .delete,
+            headers: headers
+        ).serializingDecodable(EmptyResponse.self).value
+    }
+    
+    func listScenes() async throws -> [SmartThingsSceneResponse] {
+        guard let token = authToken else {
+            throw DeviceOperationError.authenticationFailed
+        }
+        
+        let headers: HTTPHeaders = [
+            "Authorization": "Bearer \(token)",
+            "Content-Type": "application/json"
+        ]
+        
+        let response = try await session.request(
+            "\(baseURL)/scenes",
+            method: .get,
+            headers: headers
+        ).serializingDecodable([SmartThingsSceneResponse].self).value
+        
+        return response
+    }
+    
+    func executeScene(sceneId: String) async throws -> SmartThingsSceneExecutionResponse {
+        guard let token = authToken else {
+            throw DeviceOperationError.authenticationFailed
+        }
+        
+        let headers: HTTPHeaders = [
+            "Authorization": "Bearer \(token)",
+            "Content-Type": "application/json"
+        ]
+        
+        let response = try await session.request(
+            "\(baseURL)/scenes/\(sceneId)/execute",
+            method: .post,
+            headers: headers
+        ).serializingDecodable(SmartThingsSceneExecutionResponse.self).value
+        
+        return response
+    }
+    
     // MARK: - Private Methods
     
     private func convertToSmartThingsCommand(_ state: DeviceState) -> Data {

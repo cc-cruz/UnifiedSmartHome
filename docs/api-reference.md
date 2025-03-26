@@ -81,7 +81,7 @@ This document provides detailed reference for each vendor integration. Adapters 
 - [x] Rate Limiting
 - [x] Webhook Support
 - [x] Device Grouping
-- [ ] Scene Support (Planned)
+- [x] Scene Support
 
 ### API Endpoints
 - **Get Devices**: `GET https://api.smartthings.com/v1/devices`
@@ -94,6 +94,12 @@ This document provides detailed reference for each vendor integration. Adapters 
   - `PUT https://api.smartthings.com/v1/groups/{groupId}`
   - `DELETE https://api.smartthings.com/v1/groups/{groupId}`
   - `POST https://api.smartthings.com/v1/groups/{groupId}/commands`
+- **Scenes**:
+  - `GET https://api.smartthings.com/v1/scenes`
+  - `POST https://api.smartthings.com/v1/scenes`
+  - `PUT https://api.smartthings.com/v1/scenes/{sceneId}`
+  - `DELETE https://api.smartthings.com/v1/scenes/{sceneId}`
+  - `POST https://api.smartthings.com/v1/scenes/{sceneId}/execute`
 
 ### Authentication
 - OAuth2 flow with refresh token support
@@ -129,11 +135,27 @@ This document provides detailed reference for each vendor integration. Adapters 
 - Group devices by room or custom criteria
 - Support for dynamic group membership
 
+### Scene Support
+- Create and manage scenes
+- Execute scenes with multiple device actions
+- Scene scheduling and automation
+- Support for complex device interactions
+
 ### Next Steps
-1. Scene Support
-   - Create and manage scenes
-   - Execute scenes
-   - Scene scheduling
+1. Comprehensive Error Handling
+   - Detailed error codes
+   - Recovery procedures
+   - Error logging and monitoring
+
+2. Test Coverage
+   - Complete test suite for all device types
+   - Edge case testing
+   - Integration testing
+
+3. Performance Optimization
+   - Device state synchronization
+   - Command execution optimization
+   - Rate limiting improvements
 
 ## August/Yale Lock Adapter
 
