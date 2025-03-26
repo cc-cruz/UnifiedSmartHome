@@ -72,34 +72,66 @@ This document provides detailed reference for each vendor integration. Adapters 
 
 ## SmartThings Adapter Details
 
-### Endpoints
+### Current Implementation Status
+- ✅ OAuth2 Authentication Flow
+- ✅ Device Discovery
+- ✅ Basic Device Control
+- ✅ Error Handling
+- ✅ Audit Logging
+- ✅ Rate Limiting
+- ⏳ Webhook Support (In Progress)
+- ⏳ Device Grouping (Planned)
+- ⏳ Scene Support (Planned)
 
+### API Endpoints
 - **Get Devices**: `GET https://api.smartthings.com/v1/devices`
 - **Device Details**: `GET https://api.smartthings.com/v1/devices/{deviceId}/status`
-- **Command**: `POST https://api.smartthings.com/v1/devices/{deviceId}/commands` with body:
-  ```json
-  {
-    "commands": [
-      {
-        "component": "main",
-        "capability": "switch",
-        "command": "on"
-      }
-    ]
-  }
+- **Command**: `POST https://api.smartthings.com/v1/devices/{deviceId}/commands`
+- **Webhooks**: `POST https://api.smartthings.com/v1/webhooks`
 
-### Specifics
+### Authentication
+- OAuth2 flow with refresh token support
+- Token storage in Keychain
+- Automatic token refresh
+- Environment variables required:
+  - `SMARTTHINGS_CLIENT_ID`
+  - `SMARTTHINGS_CLIENT_SECRET`
+  - `SMARTTHINGS_REDIRECT_URI`
 
-- Each device can have multiple capabilities (e.g., switch, temperatureMeasurement, lock, etc.).
-- The adapter must parse capability sets to determine which DeviceType they map to.
+### Device Types Supported
+- Locks
+- Thermostats
+- Lights
+- Switches
+- Generic Devices
 
-### OAuth2 Setup
+### Rate Limiting
+- 100 requests per minute per device
+- 1000 requests per minute per user
+- Automatic retry with exponential backoff
 
-- **Personal Access Token or OAuth2**:
-  - SmartThings may use a personal access token approach in developer mode.
-  - For production, standard OAuth2 is recommended.
+### Error Handling
+- Authentication errors
+- Network errors
+- Rate limit errors
+- Device-specific errors
+- Validation errors
 
----
+### Next Steps
+1. Webhook Implementation
+   - Subscribe to device events
+   - Handle real-time updates
+   - Manage webhook lifecycle
+
+2. Device Grouping
+   - Create device groups
+   - Manage group membership
+   - Execute group commands
+
+3. Scene Support
+   - Create and manage scenes
+   - Execute scenes
+   - Scene scheduling
 
 ## August/Yale Lock Adapter
 

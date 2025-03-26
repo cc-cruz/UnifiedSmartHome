@@ -1,74 +1,32 @@
 import Foundation
 
-/// A type-erasing wrapper for Codable values
-public struct AnyCodable: Codable, Equatable {
-    // MARK: - Properties
+/// A type that can represent any JSON value
+public struct AnyCodable: Codable {
+    public let value: Any
     
-    private let value: Any
-    
-    // MARK: - Computed Properties
-    
-    /// Attempt to get the value as a String
-    public var stringValue: String? {
-        return value as? String
-    }
-    
-    /// Attempt to get the value as an Int
-    public var intValue: Int? {
-        return value as? Int
-    }
-    
-    /// Attempt to get the value as a Double
-    public var doubleValue: Double? {
-        return value as? Double ?? (value as? Int).map(Double.init)
-    }
-    
-    /// Attempt to get the value as a Bool
-    public var boolValue: Bool? {
-        return value as? Bool
-    }
-    
-    /// Attempt to get the value as a Dictionary
-    public var dictionaryValue: [String: AnyCodable]? {
-        return value as? [String: AnyCodable]
-    }
-    
-    /// Attempt to get the value as an Array
-    public var arrayValue: [AnyCodable]? {
-        return value as? [AnyCodable]
-    }
-    
-    // MARK: - Initialization
-    
-    /// Initialize with a value
     public init(_ value: Any) {
         self.value = value
     }
-    
-    // MARK: - Codable
     
     public init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
         
         if container.decodeNil() {
-            self.value = NSNull()
+            value = NSNull()
         } else if let bool = try? container.decode(Bool.self) {
-            self.value = bool
+            value = bool
         } else if let int = try? container.decode(Int.self) {
-            self.value = int
+            value = int
         } else if let double = try? container.decode(Double.self) {
-            self.value = double
+            value = double
         } else if let string = try? container.decode(String.self) {
-            self.value = string
+            value = string
         } else if let array = try? container.decode([AnyCodable].self) {
-            self.value = array
-        } else if let dictionary = try? container.decode([String: AnyCodable].self) {
-            self.value = dictionary
+            value = array.map { $0.value }
+        } else if let dict = try? container.decode([String: AnyCodable].self) {
+            value = dict.mapValues { $0.value }
         } else {
-            throw DecodingError.dataCorruptedError(
-                in: container,
-                debugDescription: "AnyCodable value cannot be decoded"
-            )
+            throw DecodingError.dataCorruptedError(in: container, debugDescription: "AnyCodable value cannot be decoded")
         }
     }
     
@@ -86,39 +44,12 @@ public struct AnyCodable: Codable, Equatable {
             try container.encode(double)
         case let string as String:
             try container.encode(string)
-        case let array as [AnyCodable]:
-            try container.encode(array)
-        case let dictionary as [String: AnyCodable]:
-            try container.encode(dictionary)
+        case let array as [Any]:
+            try container.encode(array.map { AnyCodable($0) })
+        case let dict as [String: Any]:
+            try container.encode(dict.mapValues { AnyCodable($0) })
         default:
-            let context = EncodingError.Context(
-                codingPath: container.codingPath,
-                debugDescription: "AnyCodable value cannot be encoded: \(value)"
-            )
-            throw EncodingError.invalidValue(value, context)
-        }
-    }
-    
-    // MARK: - Equatable
-    
-    public static func == (lhs: AnyCodable, rhs: AnyCodable) -> Bool {
-        switch (lhs.value, rhs.value) {
-        case is (NSNull, NSNull):
-            return true
-        case let (lhsValue as Bool, rhsValue as Bool):
-            return lhsValue == rhsValue
-        case let (lhsValue as Int, rhsValue as Int):
-            return lhsValue == rhsValue
-        case let (lhsValue as Double, rhsValue as Double):
-            return lhsValue == rhsValue
-        case let (lhsValue as String, rhsValue as String):
-            return lhsValue == rhsValue
-        case let (lhsValue as [String: AnyCodable], rhsValue as [String: AnyCodable]):
-            return lhsValue == rhsValue
-        case let (lhsValue as [AnyCodable], rhsValue as [AnyCodable]):
-            return lhsValue == rhsValue
-        default:
-            return false
+            throw EncodingError.invalidValue(value, EncodingError.Context(codingPath: container.codingPath, debugDescription: "AnyCodable value cannot be encoded"))
         }
     }
 }

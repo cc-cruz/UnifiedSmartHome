@@ -318,6 +318,89 @@ final class SmartThingsAdapterTests: XCTestCase {
         XCTAssertEqual(mockAuditLogger.loggedEvents[1].category, .security)
         XCTAssertEqual(mockAuditLogger.loggedEvents[1].action, .rateLimitExceeded)
     }
+    
+    // MARK: - Webhook Tests
+    
+    func testSubscribeToWebhooks() async throws {
+        // Arrange
+        let url = "https://example.com/webhook"
+        let events: [SmartThingsWebhookEvent] = [.deviceEvent, .deviceHealth]
+        let deviceIds = ["device-123"]
+        
+        let mockResponse = SmartThingsWebhookSubscriptionResponse(
+            webhookId: "webhook-123",
+            url: url,
+            events: events,
+            deviceIds: deviceIds,
+            status: "ACTIVE",
+            createdAt: ISO8601DateFormatter().string(from: Date())
+        )
+        
+        mockNetworkService.mockResponses["https://api.smartthings.com/v1/webhooks"] = mockResponse
+        
+        // Act
+        let response = try await adapter.subscribeToWebhooks(url: url, events: events, deviceIds: deviceIds)
+        
+        // Assert
+        XCTAssertEqual(response.webhookId, "webhook-123")
+        XCTAssertEqual(response.url, url)
+        XCTAssertEqual(response.events, events)
+        XCTAssertEqual(response.deviceIds, deviceIds)
+        XCTAssertEqual(response.status, "ACTIVE")
+    }
+    
+    func testDeleteWebhook() async throws {
+        // Arrange
+        let webhookId = "webhook-123"
+        
+        // Configure mock network service to succeed
+        mockNetworkService.requestHandler = { request in
+            guard let url = request.url, url.absoluteString.contains(webhookId) else {
+                throw URLError(.badURL)
+            }
+            
+            // Successful response
+            return (Data(), HTTPURLResponse(url: url, statusCode: 204, httpVersion: nil, headerFields: nil)!)
+        }
+        
+        // Act
+        try await adapter.deleteWebhook(webhookId: webhookId)
+        
+        // Assert
+        // No exception means success
+    }
+    
+    func testListWebhooks() async throws {
+        // Arrange
+        let mockResponse = [
+            SmartThingsWebhookSubscriptionResponse(
+                webhookId: "webhook-123",
+                url: "https://example.com/webhook1",
+                events: [.deviceEvent],
+                deviceIds: ["device-123"],
+                status: "ACTIVE",
+                createdAt: ISO8601DateFormatter().string(from: Date())
+            ),
+            SmartThingsWebhookSubscriptionResponse(
+                webhookId: "webhook-456",
+                url: "https://example.com/webhook2",
+                events: [.deviceHealth],
+                deviceIds: ["device-456"],
+                status: "ACTIVE",
+                createdAt: ISO8601DateFormatter().string(from: Date())
+            )
+        ]
+        
+        mockNetworkService.mockResponses["https://api.smartthings.com/v1/webhooks"] = mockResponse
+        
+        // Act
+        let response = try await adapter.listWebhooks()
+        
+        // Assert
+        XCTAssertEqual(response.count, 2)
+        XCTAssertEqual(response[0].webhookId, "webhook-123")
+        XCTAssertEqual(response[1].webhookId, "webhook-456")
+    }
 }
 
 // MARK: - Mock Classes

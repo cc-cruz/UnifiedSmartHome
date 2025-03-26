@@ -26,42 +26,22 @@ public struct SmartThingsDevice: Codable {
     /// Human readable name
     public let name: String
     
-    /// The integration or brand that created the device
-    public let manufacturerName: String?
-    
-    /// The specific model
-    public let modelName: String?
-    
     /// The type of device
-    public let deviceTypeName: String?
-    
-    /// List of device capabilities
-    public let capabilities: [SmartThingsCapability]?
-    
-    /// Components within the device
-    public let components: [String]?
-    
-    /// Status of the device (online/offline)
-    public let status: String?
-    
-    /// Device health check result
-    public let healthState: String?
+    public let type: String
     
     /// Device state metadata
-    public let attributes: [String: AnyCodable]?
+    public let state: [String: Any]
+    
+    /// List of device capabilities
+    public let capabilities: [String]
     
     /// Coding keys to map properties to JSON fields
     private enum CodingKeys: String, CodingKey {
-        case deviceId
-        case name
-        case manufacturerName
-        case modelName
-        case deviceTypeName = "deviceType" 
-        case components
-        case capabilities
-        case status
-        case healthState
-        case attributes
+        case deviceId = "deviceId"
+        case name = "name"
+        case type = "type"
+        case state = "state"
+        case capabilities = "capabilities"
     }
 }
 
@@ -105,4 +85,9 @@ public struct SmartThingsStateValue: Codable {
     
     /// Data for the value
     public let data: AnyCodable?
+}
+
+struct SmartThingsCommandResponse: Codable {
+    let status: String
+    let message: String?
 } 

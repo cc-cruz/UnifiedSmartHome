@@ -1,78 +1,111 @@
 import Foundation
 
-/// Base abstract class for all smart devices
-public class AbstractDevice: Identifiable, Codable, Equatable {
-    // MARK: - Properties
-    
+/// Protocol defining the interface for all smart devices in the system
+public protocol AbstractDevice: Identifiable {
     /// Unique identifier for the device
-    public var id: String?
+    var id: String { get }
     
-    /// Human-readable name of the device
-    public var name: String
+    /// Human readable name
+    var name: String { get }
     
-    /// Manufacturer of the device
-    public var manufacturer: String
+    /// The integration or brand that created the device
+    var manufacturerName: String? { get }
     
-    /// Model identifier of the device
-    public var model: String
+    /// The specific model
+    var modelName: String? { get }
     
-    /// Firmware version of the device
-    public var firmwareVersion: String?
+    /// The type of device
+    var deviceTypeName: String? { get }
     
-    /// API service this device is connected through
-    public var serviceName: String
+    /// List of device capabilities
+    var capabilities: [SmartThingsCapability]? { get }
     
-    /// If the device is currently online/accessible
-    public var isOnline: Bool
+    /// Components within the device
+    var components: [String]? { get }
     
-    /// Date when this device was added to the system
-    public var dateAdded: Date
+    /// Status of the device (online/offline)
+    var status: String? { get }
     
-    /// Additional metadata specific to the device
-    public var metadata: [String: String]
+    /// Device health check result
+    var healthState: String? { get }
     
-    // MARK: - Initializer
+    /// Device state metadata
+    var attributes: [String: AnyCodable]? { get }
+}
+
+/// Base implementation of AbstractDevice with common properties
+public class BaseDevice: AbstractDevice {
+    public let id: String
+    public let name: String
+    public let manufacturerName: String?
+    public let modelName: String?
+    public let deviceTypeName: String?
+    public let capabilities: [SmartThingsCapability]?
+    public let components: [String]?
+    public let status: String?
+    public let healthState: String?
+    public let attributes: [String: AnyCodable]?
     
-    public init(id: String?, name: String, manufacturer: String, model: String, 
-         firmwareVersion: String?, serviceName: String, isOnline: Bool, 
-         dateAdded: Date, metadata: [String: String]) {
+    public init(
+        id: String,
+        name: String,
+        manufacturerName: String? = nil,
+        modelName: String? = nil,
+        deviceTypeName: String? = nil,
+        capabilities: [SmartThingsCapability]? = nil,
+        components: [String]? = nil,
+        status: String? = nil,
+        healthState: String? = nil,
+        attributes: [String: AnyCodable]? = nil
+    ) {
         self.id = id
         self.name = name
-        self.manufacturer = manufacturer
-        self.model = model
-        self.firmwareVersion = firmwareVersion
-        self.serviceName = serviceName
-        self.isOnline = isOnline
-        self.dateAdded = dateAdded
-        self.metadata = metadata
+        self.manufacturerName = manufacturerName
+        self.modelName = modelName
+        self.deviceTypeName = deviceTypeName
+        self.capabilities = capabilities
+        self.components = components
+        self.status = status
+        self.healthState = healthState
+        self.attributes = attributes
     }
-    
-    // MARK: - Methods
     
     /// Creates a copy of the current device
-    public func copy() -> AbstractDevice {
-        return AbstractDevice(
+    public func copy() -> BaseDevice {
+        return BaseDevice(
             id: id,
             name: name,
-            manufacturer: manufacturer,
-            model: model,
-            firmwareVersion: firmwareVersion,
-            serviceName: serviceName,
-            isOnline: isOnline,
-            dateAdded: dateAdded,
-            metadata: metadata
+            manufacturerName: manufacturerName,
+            modelName: modelName,
+            deviceTypeName: deviceTypeName,
+            capabilities: capabilities,
+            components: components,
+            status: status,
+            healthState: healthState,
+            attributes: attributes
         )
     }
-    
-    // MARK: - Equatable
-    
-    public static func == (lhs: AbstractDevice, rhs: AbstractDevice) -> Bool {
-        return lhs.id == rhs.id &&
-               lhs.name == rhs.name &&
-               lhs.manufacturer == rhs.manufacturer &&
-               lhs.model == rhs.model &&
-               lhs.firmwareVersion == rhs.firmwareVersion &&
-               lhs.serviceName == rhs.serviceName &&
-               lhs.isOnline == rhs.isOnline
-    }
+}
+
+protocol AbstractDevice: Identifiable {
+    var id: String { get }
+    var name: String { get }
+    var type: DeviceType { get }
+    var state: [String: Any] { get }
+    var capabilities: [String] { get }
+}
+
+enum DeviceType: String {
+    case lock = "lock"
+    case thermostat = "thermostat"
+    case light = "light"
+    case switch_ = "switch"
+    case generic = "generic"
+}
+
+struct DeviceState {
+    let deviceId: String
+    let deviceType: DeviceType
+    let timestamp: Date
+    let attributes: [String: Any]
 } 
