@@ -140,22 +140,34 @@ public class SmartThingsErrorRecovery {
     
     // MARK: - Device-Specific Wake Procedures
     
+    // TODO: Implement device-specific wake procedures based on real-world usage patterns.
+    // These procedures should be enhanced as we gather more data about device behavior
+    // and common failure modes in production.
     private func wakeLockDevice(deviceId: String) async -> Bool {
         // Implement lock-specific wake procedure
         // For example, try to ping the device or send a status request
         return false
     }
     
+    // TODO: Implement device-specific wake procedures based on real-world usage patterns.
+    // These procedures should be enhanced as we gather more data about device behavior
+    // and common failure modes in production.
     private func wakeThermostatDevice(deviceId: String) async -> Bool {
         // Implement thermostat-specific wake procedure
         return false
     }
     
+    // TODO: Implement device-specific wake procedures based on real-world usage patterns.
+    // These procedures should be enhanced as we gather more data about device behavior
+    // and common failure modes in production.
     private func wakeLightDevice(deviceId: String) async -> Bool {
         // Implement light-specific wake procedure
         return false
     }
     
+    // TODO: Implement device-specific wake procedures based on real-world usage patterns.
+    // These procedures should be enhanced as we gather more data about device behavior
+    // and common failure modes in production.
     private func wakeSwitchDevice(deviceId: String) async -> Bool {
         // Implement switch-specific wake procedure
         return false
@@ -163,21 +175,33 @@ public class SmartThingsErrorRecovery {
     
     // MARK: - Device-Specific Reset Procedures
     
+    // TODO: Implement device-specific reset procedures based on real-world usage patterns.
+    // These procedures should be enhanced as we gather more data about device behavior
+    // and common failure modes in production.
     private func resetLockDevice(deviceId: String, currentState: [String: Any]) async -> Bool {
         // Implement lock-specific reset procedure
         return false
     }
     
+    // TODO: Implement device-specific reset procedures based on real-world usage patterns.
+    // These procedures should be enhanced as we gather more data about device behavior
+    // and common failure modes in production.
     private func resetThermostatDevice(deviceId: String, currentState: [String: Any]) async -> Bool {
         // Implement thermostat-specific reset procedure
         return false
     }
     
+    // TODO: Implement device-specific reset procedures based on real-world usage patterns.
+    // These procedures should be enhanced as we gather more data about device behavior
+    // and common failure modes in production.
     private func resetLightDevice(deviceId: String, currentState: [String: Any]) async -> Bool {
         // Implement light-specific reset procedure
         return false
     }
     
+    // TODO: Implement device-specific reset procedures based on real-world usage patterns.
+    // These procedures should be enhanced as we gather more data about device behavior
+    // and common failure modes in production.
     private func resetSwitchDevice(deviceId: String, currentState: [String: Any]) async -> Bool {
         // Implement switch-specific reset procedure
         return false
