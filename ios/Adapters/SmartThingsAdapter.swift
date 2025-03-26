@@ -188,6 +188,113 @@ class SmartThingsAdapter: SmartDeviceAdapter {
         return response
     }
     
+    // MARK: - Group Management
+    
+    func createGroup(name: String, deviceIds: [String], roomId: String? = nil) async throws -> SmartThingsGroupResponse {
+        guard let token = authToken else {
+            throw DeviceOperationError.authenticationFailed
+        }
+        
+        let headers: HTTPHeaders = [
+            "Authorization": "Bearer \(token)",
+            "Content-Type": "application/json"
+        ]
+        
+        let request = SmartThingsGroupRequest(
+            name: name,
+            deviceIds: deviceIds,
+            roomId: roomId
+        )
+        
+        let response = try await session.request(
+            "\(baseURL)/groups",
+            method: .post,
+            headers: headers,
+            body: try JSONEncoder().encode(request)
+        ).serializingDecodable(SmartThingsGroupResponse.self).value
+        
+        return response
+    }
+    
+    func updateGroup(groupId: String, name: String? = nil, deviceIds: [String]? = nil, roomId: String? = nil) async throws -> SmartThingsGroupResponse {
+        guard let token = authToken else {
+            throw DeviceOperationError.authenticationFailed
+        }
+        
+        let headers: HTTPHeaders = [
+            "Authorization": "Bearer \(token)",
+            "Content-Type": "application/json"
+        ]
+        
+        var request: [String: Any] = [:]
+        if let name = name { request["name"] = name }
+        if let deviceIds = deviceIds { request["deviceIds"] = deviceIds }
+        if let roomId = roomId { request["roomId"] = roomId }
+        
+        let response = try await session.request(
+            "\(baseURL)/groups/\(groupId)",
+            method: .put,
+            headers: headers,
+            body: try JSONSerialization.data(withJSONObject: request)
+        ).serializingDecodable(SmartThingsGroupResponse.self).value
+        
+        return response
+    }
+    
+    func deleteGroup(groupId: String) async throws {
+        guard let token = authToken else {
+            throw DeviceOperationError.authenticationFailed
+        }
+        
+        let headers: HTTPHeaders = [
+            "Authorization": "Bearer \(token)",
+            "Content-Type": "application/json"
+        ]
+        
+        _ = try await session.request(
+            "\(baseURL)/groups/\(groupId)",
+            method: .delete,
+            headers: headers
+        ).serializingDecodable(EmptyResponse.self).value
+    }
+    
+    func listGroups() async throws -> [SmartThingsGroupResponse] {
+        guard let token = authToken else {
+            throw DeviceOperationError.authenticationFailed
+        }
+        
+        let headers: HTTPHeaders = [
+            "Authorization": "Bearer \(token)",
+            "Content-Type": "application/json"
+        ]
+        
+        let response = try await session.request(
+            "\(baseURL)/groups",
+            method: .get,
+            headers: headers
+        ).serializingDecodable([SmartThingsGroupResponse].self).value
+        
+        return response
+    }
+    
+    func executeGroupCommand(groupId: String, command: SmartThingsGroupCommandRequest) async throws {
+        guard let token = authToken else {
+            throw DeviceOperationError.authenticationFailed
+        }
+        
+        let headers: HTTPHeaders = [
+            "Authorization": "Bearer \(token)",
+            "Content-Type": "application/json"
+        ]
+        
+        _ = try await session.request(
+            "\(baseURL)/groups/\(groupId)/commands",
+            method: .post,
+            headers: headers,
+            body: try JSONEncoder().encode(command)
+        ).serializingDecodable(EmptyResponse.self).value
+    }
+    
     // MARK: - Private Methods
     
     private func convertToSmartThingsCommand(_ state: DeviceState) -> Data {

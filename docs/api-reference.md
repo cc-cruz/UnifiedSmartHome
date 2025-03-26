@@ -73,21 +73,27 @@ This document provides detailed reference for each vendor integration. Adapters 
 ## SmartThings Adapter Details
 
 ### Current Implementation Status
-- ✅ OAuth2 Authentication Flow
-- ✅ Device Discovery
-- ✅ Basic Device Control
-- ✅ Error Handling
-- ✅ Audit Logging
-- ✅ Rate Limiting
-- ⏳ Webhook Support (In Progress)
-- ⏳ Device Grouping (Planned)
-- ⏳ Scene Support (Planned)
+- [x] OAuth2 Authentication Flow
+- [x] Device Discovery
+- [x] Basic Device Control
+- [x] Error Handling
+- [x] Audit Logging
+- [x] Rate Limiting
+- [x] Webhook Support
+- [x] Device Grouping
+- [ ] Scene Support (Planned)
 
 ### API Endpoints
 - **Get Devices**: `GET https://api.smartthings.com/v1/devices`
 - **Device Details**: `GET https://api.smartthings.com/v1/devices/{deviceId}/status`
 - **Command**: `POST https://api.smartthings.com/v1/devices/{deviceId}/commands`
 - **Webhooks**: `POST https://api.smartthings.com/v1/webhooks`
+- **Groups**: 
+  - `GET https://api.smartthings.com/v1/groups`
+  - `POST https://api.smartthings.com/v1/groups`
+  - `PUT https://api.smartthings.com/v1/groups/{groupId}`
+  - `DELETE https://api.smartthings.com/v1/groups/{groupId}`
+  - `POST https://api.smartthings.com/v1/groups/{groupId}/commands`
 
 ### Authentication
 - OAuth2 flow with refresh token support
@@ -117,18 +123,14 @@ This document provides detailed reference for each vendor integration. Adapters 
 - Device-specific errors
 - Validation errors
 
+### Device Grouping
+- Create and manage device groups
+- Execute commands on multiple devices simultaneously
+- Group devices by room or custom criteria
+- Support for dynamic group membership
+
 ### Next Steps
-1. Webhook Implementation
-   - Subscribe to device events
-   - Handle real-time updates
-   - Manage webhook lifecycle
-
-2. Device Grouping
-   - Create device groups
-   - Manage group membership
-   - Execute group commands
-
-3. Scene Support
+1. Scene Support
    - Create and manage scenes
    - Execute scenes
    - Scene scheduling

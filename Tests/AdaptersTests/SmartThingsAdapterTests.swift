@@ -401,6 +401,149 @@ final class SmartThingsAdapterTests: XCTestCase {
         XCTAssertEqual(response[0].webhookId, "webhook-123")
         XCTAssertEqual(response[1].webhookId, "webhook-456")
     }
+    
+    // MARK: - Group Management Tests
+    
+    func testCreateGroup() async throws {
+        // Arrange
+        let name = "Living Room Lights"
+        let deviceIds = ["device-123", "device-456"]
+        let roomId = "room-123"
+        
+        let mockResponse = SmartThingsGroupResponse(
+            groupId: "group-123",
+            name: name,
+            deviceIds: deviceIds,
+            roomId: roomId,
+            createdAt: ISO8601DateFormatter().string(from: Date()),
+            updatedAt: ISO8601DateFormatter().string(from: Date())
+        )
+        
+        mockNetworkService.mockResponses["https://api.smartthings.com/v1/groups"] = mockResponse
+        
+        // Act
+        let response = try await adapter.createGroup(name: name, deviceIds: deviceIds, roomId: roomId)
+        
+        // Assert
+        XCTAssertEqual(response.groupId, "group-123")
+        XCTAssertEqual(response.name, name)
+        XCTAssertEqual(response.deviceIds, deviceIds)
+        XCTAssertEqual(response.roomId, roomId)
+    }
+    
+    func testUpdateGroup() async throws {
+        // Arrange
+        let groupId = "group-123"
+        let newName = "Updated Living Room Lights"
+        let newDeviceIds = ["device-789"]
+        
+        let mockResponse = SmartThingsGroupResponse(
+            groupId: groupId,
+            name: newName,
+            deviceIds: newDeviceIds,
+            roomId: nil,
+            createdAt: ISO8601DateFormatter().string(from: Date()),
+            updatedAt: ISO8601DateFormatter().string(from: Date())
+        )
+        
+        mockNetworkService.mockResponses["https://api.smartthings.com/v1/groups/\(groupId)"] = mockResponse
+        
+        // Act
+        let response = try await adapter.updateGroup(
+            groupId: groupId,
+            name: newName,
+            deviceIds: newDeviceIds
+        )
+        
+        // Assert
+        XCTAssertEqual(response.groupId, groupId)
+        XCTAssertEqual(response.name, newName)
+        XCTAssertEqual(response.deviceIds, newDeviceIds)
+    }
+    
+    func testDeleteGroup() async throws {
+        // Arrange
+        let groupId = "group-123"
+        
+        // Configure mock network service to succeed
+        mockNetworkService.requestHandler = { request in
+            guard let url = request.url, url.absoluteString.contains(groupId) else {
+                throw URLError(.badURL)
+            }
+            
+            // Successful response
+            return (Data(), HTTPURLResponse(url: url, statusCode: 204, httpVersion: nil, headerFields: nil)!)
+        }
+        
+        // Act
+        try await adapter.deleteGroup(groupId: groupId)
+        
+        // Assert
+        // No exception means success
+    }
+    
+    func testListGroups() async throws {
+        // Arrange
+        let mockResponse = [
+            SmartThingsGroupResponse(
+                groupId: "group-123",
+                name: "Living Room Lights",
+                deviceIds: ["device-123", "device-456"],
+                roomId: "room-123",
+                createdAt: ISO8601DateFormatter().string(from: Date()),
+                updatedAt: ISO8601DateFormatter().string(from: Date())
+            ),
+            SmartThingsGroupResponse(
+                groupId: "group-456",
+                name: "Bedroom Lights",
+                deviceIds: ["device-789"],
+                roomId: "room-456",
+                createdAt: ISO8601DateFormatter().string(from: Date()),
+                updatedAt: ISO8601DateFormatter().string(from: Date())
+            )
+        ]
+        
+        mockNetworkService.mockResponses["https://api.smartthings.com/v1/groups"] = mockResponse
+        
+        // Act
+        let response = try await adapter.listGroups()
+        
+        // Assert
+        XCTAssertEqual(response.count, 2)
+        XCTAssertEqual(response[0].groupId, "group-123")
+        XCTAssertEqual(response[1].groupId, "group-456")
+    }
+    
+    func testExecuteGroupCommand() async throws {
+        // Arrange
+        let groupId = "group-123"
+        let command = SmartThingsGroupCommandRequest(
+            commands: [
+                SmartThingsGroupCommandRequest.SmartThingsGroupCommand(
+                    component: "main",
+                    capability: "switch",
+                    command: "on",
+                    arguments: nil
+                )
+            ]
+        )
+        
+        // Configure mock network service to succeed
+        mockNetworkService.requestHandler = { request in
+            guard let url = request.url, url.absoluteString.contains(groupId) else {
+                throw URLError(.badURL)
+            }
+            
+            // Successful response
+            return (Data(), HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+        }
+        
+        // Act
+        try await adapter.executeGroupCommand(groupId: groupId, command: command)
+        
+        // Assert
+        // No exception means success
+    }
 }
 
 // MARK: - Mock Classes
