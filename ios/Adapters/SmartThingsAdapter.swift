@@ -29,6 +29,9 @@ class SmartThingsAdapter: SmartDeviceAdapter {
     private let baseURL = "https://api.smartthings.com/v1"
     private let session: Session
     private let retryHandler: SmartThingsRetryHandler
+    private let logger = SmartThingsLogger.shared
+    private let metrics = SmartThingsMetrics.shared
+    private let errorRecovery = SmartThingsErrorRecovery.shared
     
     // MARK: - Initializer
     
@@ -118,7 +121,6 @@ class SmartThingsAdapter: SmartDeviceAdapter {
             "Content-Type": "application/json"
         ]
         
-        // Convert DeviceState to SmartThings command format
         let command = convertToSmartThingsCommand(newState)
         
         var request = URLRequest(url: URL(string: "\(baseURL)/devices/\(deviceId)/commands")!)
@@ -126,12 +128,46 @@ class SmartThingsAdapter: SmartDeviceAdapter {
         request.allHTTPHeaderFields = headers.dictionary
         request.httpBody = command
         
-        _ = try await retryHandler.executeRequest(request, session: session) { error in
-            // Log error for monitoring
-            print("Error updating device state: \(error.localizedDescription)")
+        do {
+            _ = try await retryHandler.executeRequest(request, session: session) { error in
+                logger.logError(error, context: ["deviceId": deviceId, "operation": "updateState"])
+                
+                // Attempt recovery for device-specific errors
+                if let smartThingsError = error as? SmartThingsError {
+                    Task {
+                        let recovered = await errorRecovery.attemptRecovery(
+                            for: smartThingsError,
+                            deviceId: deviceId,
+                            deviceType: newState.deviceType,
+                            context: ["state": newState]
+                        )
+                        
+                        if recovered {
+                            logger.logInfo("Device recovered successfully", context: ["deviceId": deviceId])
+                        } else {
+                            logger.logWarning("Device recovery failed", context: ["deviceId": deviceId])
+                        }
+                    }
+                }
+            }
+            
+            logger.logDeviceOperation(
+                deviceId: deviceId,
+                operation: "updateState",
+                status: "success",
+                context: ["state": newState]
+            )
+            
+            return newState
+        } catch {
+            logger.logDeviceOperation(
+                deviceId: deviceId,
+                operation: "updateState",
+                status: "failed",
+                context: ["error": error.localizedDescription]
+            )
+            throw error
         }
-        
-        return newState
     }
     
     // MARK: - Webhook Management
@@ -445,12 +481,33 @@ class SmartThingsAdapter: SmartDeviceAdapter {
         request.httpMethod = "POST"
         request.allHTTPHeaderFields = headers.dictionary
         
-        let response = try await retryHandler.executeRequest(request, session: session) { error in
-            // Log error for monitoring
-            print("Error executing scene: \(error.localizedDescription)")
-        }
+        let startTime = Date()
         
-        return try JSONDecoder().decode(SmartThingsSceneExecutionResponse.self, from: response)
+        do {
+            let response = try await retryHandler.executeRequest(request, session: session) { error in
+                logger.logError(error, context: ["sceneId": sceneId, "operation": "executeScene"])
+            }
+            
+            let latency = Date().timeIntervalSince(startTime)
+            metrics.recordOperationLatency("executeScene", latency: latency)
+            
+            logger.logSceneOperation(
+                sceneId: sceneId,
+                operation: "execute",
+                status: "success",
+                context: ["latency": latency]
+            )
+            
+            return try JSONDecoder().decode(SmartThingsSceneExecutionResponse.self, from: response)
+        } catch {
+            logger.logSceneOperation(
+                sceneId: sceneId,
+                operation: "execute",
+                status: "failed",
+                context: ["error": error.localizedDescription]
+            )
+            throw error
+        }
     }
     
     // MARK: - Private Methods
