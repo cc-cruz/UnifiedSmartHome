@@ -510,6 +510,61 @@ class SmartThingsAdapter: SmartDeviceAdapter {
         }
     }
     
+    // MARK: - Device State Management
+    
+    func fetchDeviceState(deviceId: String) async throws -> DeviceState {
+        guard let token = authToken else {
+            throw SmartThingsError.unauthorized
+        }
+        
+        let headers: HTTPHeaders = [
+            "Authorization": "Bearer \(token)",
+            "Content-Type": "application/json"
+        ]
+        
+        var request = URLRequest(url: URL(string: "\(baseURL)/devices/\(deviceId)/status")!)
+        request.httpMethod = "GET"
+        request.allHTTPHeaderFields = headers.dictionary
+        
+        let startTime = Date()
+        
+        do {
+            let response = try await retryHandler.executeRequest(request, session: session) { error in
+                logger.logError(error, context: ["deviceId": deviceId, "operation": "fetchState"])
+            }
+            
+            let latency = Date().timeIntervalSince(startTime)
+            metrics.recordOperationLatency("fetchState", latency: latency)
+            
+            let statusResponse = try JSONDecoder().decode(SmartThingsDeviceStatusResponse.self, from: response)
+            
+            // Convert SmartThings status to DeviceState
+            let state = DeviceState(
+                deviceId: deviceId,
+                deviceType: statusResponse.type,
+                timestamp: Date(),
+                attributes: statusResponse.attributes
+            )
+            
+            logger.logDeviceOperation(
+                deviceId: deviceId,
+                operation: "fetchState",
+                status: "success",
+                context: ["latency": latency]
+            )
+            
+            return state
+        } catch {
+            logger.logDeviceOperation(
+                deviceId: deviceId,
+                operation: "fetchState",
+                status: "failed",
+                context: ["error": error.localizedDescription]
+            )
+            throw error
+        }
+    }
+    
     // MARK: - Private Methods
     
     private func convertToSmartThingsCommand(_ state: DeviceState) -> Data {
