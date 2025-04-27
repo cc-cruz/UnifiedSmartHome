@@ -1,5 +1,6 @@
 import XCTest
 @testable import UnifiedSmartHome
+import Services
 
 final class SmartThingsAdapterTests: XCTestCase {
     var adapter: SmartThingsAdapter!

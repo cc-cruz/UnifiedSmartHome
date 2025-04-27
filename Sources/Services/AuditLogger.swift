@@ -1,10 +1,10 @@
 import Foundation
 
-class AuditLogger {
+public class AuditLogger {
     private let analyticsService: AnalyticsService
     private let persistentStorage: AuditLogStorage
     
-    init(analyticsService: AnalyticsService, persistentStorage: AuditLogStorage) {
+    public init(analyticsService: AnalyticsService, persistentStorage: AuditLogStorage) {
         self.analyticsService = analyticsService
         self.persistentStorage = persistentStorage
     }
@@ -77,22 +77,22 @@ class AuditLogger {
 }
 
 // Protocol for audit log storage
-protocol AuditLogStorage {
+public protocol AuditLogStorage {
     func storeLog(_ logEntry: AuditLogEntry)
     func getLogs(startDate: Date?, endDate: Date?, type: String?, limit: Int) -> [AuditLogEntry]
     func clearLogs(olderThan: Date)
 }
 
 // Audit log entry model
-struct AuditLogEntry: Codable {
-    let id: UUID
-    let timestamp: Date
-    let type: String
-    let category: String
-    let details: [String: String] // Simplified for Codable
-    let userId: String
+public struct AuditLogEntry: Codable {
+    public let id: UUID
+    public let timestamp: Date
+    public let type: String
+    public let category: String
+    public let details: [String: String] // Simplified for Codable
+    public let userId: String
     
-    init(timestamp: Date, type: String, category: String, details: [String: Any], userId: String) {
+    public init(timestamp: Date, type: String, category: String, details: [String: Any], userId: String) {
         self.id = UUID()
         self.timestamp = timestamp
         self.type = type
@@ -110,19 +110,21 @@ struct AuditLogEntry: Codable {
 }
 
 // Concrete implementation of audit log storage using Core Data
-class CoreDataAuditLogStorage: AuditLogStorage {
+public class CoreDataAuditLogStorage: AuditLogStorage {
     // In a real implementation, this would use Core Data
     // For now, we'll use a simple in-memory array
     private var logs: [AuditLogEntry] = []
     
-    func storeLog(_ logEntry: AuditLogEntry) {
+    public init() {}
+    
+    public func storeLog(_ logEntry: AuditLogEntry) {
         logs.append(logEntry)
         
         // In a real implementation, we would save to Core Data
         // and potentially sync with a backend for centralized audit logs
     }
     
-    func getLogs(startDate: Date? = nil, endDate: Date? = nil, type: String? = nil, limit: Int = 100) -> [AuditLogEntry] {
+    public func getLogs(startDate: Date? = nil, endDate: Date? = nil, type: String? = nil, limit: Int = 100) -> [AuditLogEntry] {
         var filteredLogs = logs
         
         if let startDate = startDate {
@@ -148,7 +150,7 @@ class CoreDataAuditLogStorage: AuditLogStorage {
         return filteredLogs
     }
     
-    func clearLogs(olderThan: Date) {
+    public func clearLogs(olderThan: Date) {
         logs.removeAll { $0.timestamp < olderThan }
         
         // In a real implementation, we would delete from Core Data

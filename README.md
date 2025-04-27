@@ -87,17 +87,45 @@ class SecurityService {
 }
 ```
 
-## Future Enhancements
+## Project Status
 
-1. **Additional Device Types**: Extend the abstraction layer to support thermostats, cameras, and lighting.
+This project follows an 8-sprint plan outlined in `docs/implementationguide.md`.
 
-2. **Automation Rules**: Create a rule engine for device automation based on triggers and conditions.
+*   **Sprint 1: Initial Setup & Thermostat**
+    *   **Status:** ✅ Completed
+    *   **Key Deliverables:** Basic project structure, Nest Thermostat integration (`NestAdapter.swift`).
+*   **Sprint 2: Locks, Lights & UI Consolidation**
+    *   **Status:** ⏳ In Progress
+    *   **Completed:** Adapters for August (`AugustLockAdapter.swift`), Yale (`YaleLockAdapter.swift`), and SmartThings (`SmartThingsAdapter.swift`) are implemented (pending full testing/verification). SmartThings token management complete.
+    *   **Next Steps:**
+        1.  Implement dedicated Light Adapter (e.g., Philips Hue).
+        2.  Consolidate device display into `DevicesView.swift`.
+*   **Sprint 3: Multi-User & Role-Based Access**
+    *   **Status:** ⏳ Upcoming
+    *   **Goal:** Introduce roles (Manager, Tenant, Guest) and enforce access control. Foundational components (`User.swift`, `UserManager.swift`) exist.
+*   **Sprint 4: Invitations & Tenant Management**
+    *   **Status:** ⏳ Upcoming
+    *   **Goal:** Implement tenant invitation and access management flows.
+*   **Sprint 5: Caching & Performance**
+    *   **Status:** ⏳ Upcoming
+    *   **Goal:** Implement caching, polling/push notifications. Some rate limiting and webhook handling exists (`SmartThingsWebhookHandler.swift`).
+*   **Sprint 6: Security & Settings**
+    *   **Status:** ⏳ Upcoming
+    *   **Goal:** Enhance security (2FA), refine token handling, and build out `SettingsView.swift`.
+*   **Sprint 7: UI/UX Polish**
+    *   **Status:** ⏳ Upcoming
+    *   **Goal:** Refine UI, implement standard device cards, improve navigation.
+*   **Sprint 8: Testing & Pilot Release**
+    *   **Status:** ⏳ Upcoming
+    *   **Goal:** Comprehensive testing and release preparation. `Tests/` directory structure exists.
 
-3. **Multi-User Support**: Enhanced access control for family members and guests.
+## Future Enhancements (Beyond Current Scope)
 
-4. **Offline Mode**: Support for basic operations when internet connectivity is limited.
-
-5. **HomeKit Integration**: Native integration with Apple's HomeKit framework.
+1.  **Additional Device Types**: Support for device categories beyond thermostats, locks, and lights (e.g., cameras, sensors, smart plugs).
+2.  **Advanced Automation Rules**: A more sophisticated rule engine with complex triggers and conditions.
+3.  **Offline Mode**: Robust support for device control and status updates without internet connectivity.
+4.  **HomeKit Integration**: Native integration with Apple's HomeKit framework.
+5.  **Platform Expansion**: Potential Android or Web versions.
 
 ## Getting Started
 

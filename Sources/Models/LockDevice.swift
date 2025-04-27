@@ -160,48 +160,4 @@ public class LockDevice: AbstractDevice {
     }
 }
 
-// User model for access control
-public struct User {
-    public let id: String
-    public let email: String
-    public let firstName: String
-    public let lastName: String
-    public var role: Role
-    public var properties: [String]
-    public var assignedRooms: [String]
-    public var guestAccess: GuestAccess?
-    
-    public enum Role: String {
-        case owner = "OWNER"
-        case propertyManager = "PROPERTY_MANAGER"
-        case tenant = "TENANT"
-        case guest = "GUEST"
-    }
-    
-    public struct GuestAccess {
-        public let validFrom: Date
-        public let validUntil: Date
-        public let deviceIds: [String]
-        
-        public init(validFrom: Date, validUntil: Date, deviceIds: [String]) {
-            self.validFrom = validFrom
-            self.validUntil = validUntil
-            self.deviceIds = deviceIds
-        }
-    }
-    
-    public var fullName: String {
-        return "\(firstName) \(lastName)"
-    }
-    
-    public init(id: String, email: String, firstName: String, lastName: String, role: Role, properties: [String], assignedRooms: [String], guestAccess: GuestAccess? = nil) {
-        self.id = id
-        self.email = email
-        self.firstName = firstName
-        self.lastName = lastName
-        self.role = role
-        self.properties = properties
-        self.assignedRooms = assignedRooms
-        self.guestAccess = guestAccess
-    }
-} 
+// User model definition removed - now solely defined in User.swift 

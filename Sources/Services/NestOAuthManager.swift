@@ -1,16 +1,17 @@
 import Foundation
 import Combine
 import AuthenticationServices
+import Helpers
 
 // Nest configuration struct to store settings
-struct NestConfiguration {
-    let clientID: String
-    let clientSecret: String
-    let redirectURI: String
-    let projectID: String
+public struct NestConfiguration {
+    public let clientID: String
+    public let clientSecret: String
+    public let redirectURI: String
+    public let projectID: String
     
     // Load from configuration source
-    static func loadFromConfiguration() -> NestConfiguration {
+    public static func loadFromConfiguration() -> NestConfiguration {
         // For development, we'll read from Info.plist
         // In production, these could come from an encrypted config or secure backend
         guard let infoDictionary = Bundle.main.infoDictionary else {
@@ -42,11 +43,11 @@ struct NestConfiguration {
     }
 }
 
-class NestOAuthManager: NSObject, ObservableObject, ASWebAuthenticationPresentationContextProviding {
+public class NestOAuthManager: NSObject, ObservableObject, ASWebAuthenticationPresentationContextProviding {
     // Published properties to track authentication state
-    @Published var isAuthenticated = false
-    @Published var isAuthenticating = false
-    @Published var error: String?
+    @Published public var isAuthenticated = false
+    @Published public var isAuthenticating = false
+    @Published public var error: String?
     
     // OAuth configuration
     private let configuration: NestConfiguration
@@ -61,41 +62,67 @@ class NestOAuthManager: NSObject, ObservableObject, ASWebAuthenticationPresentat
     
     private var cancellables = Set<AnyCancellable>()
     
+    // Keychain Helper Instance
+    private let keychainHelper = Helpers.KeychainHelper() // Use an instance
+    
     // Current tokens
     private var accessToken: String? {
-        get { KeychainHelper.standard.read(service: "NestService", account: accessTokenKey, type: String.self) }
-        set { 
+        get {
+            // Use instance variable
+            return keychainHelper.getString(for: accessTokenKey)
+        }
+        set {
             if let newValue = newValue {
-                KeychainHelper.standard.save(newValue, service: "NestService", account: accessTokenKey) 
+                // Use instance variable
+                _ = keychainHelper.saveString(newValue, for: accessTokenKey) 
             } else {
-                KeychainHelper.standard.delete(service: "NestService", account: accessTokenKey)
+                // Use instance variable
+                _ = keychainHelper.deleteItem(for: accessTokenKey) 
             }
         }
     }
     
     private var refreshToken: String? {
-        get { KeychainHelper.standard.read(service: "NestService", account: refreshTokenKey, type: String.self) }
-        set { 
+        get {
+            // Use instance variable
+            return keychainHelper.getString(for: refreshTokenKey)
+        }
+        set {
             if let newValue = newValue {
-                KeychainHelper.standard.save(newValue, service: "NestService", account: refreshTokenKey) 
+                // Use instance variable
+                _ = keychainHelper.saveString(newValue, for: refreshTokenKey)
             } else {
-                KeychainHelper.standard.delete(service: "NestService", account: refreshTokenKey)
+                // Use instance variable
+                _ = keychainHelper.deleteItem(for: refreshTokenKey)
             }
         }
     }
     
     private var tokenExpiry: Date? {
-        get { KeychainHelper.standard.read(service: "NestService", account: tokenExpiryKey, type: Date.self) }
-        set { 
+        get {
+            // Use instance variable
+            guard let data = keychainHelper.getData(for: tokenExpiryKey) else {
+                return nil
+            }
+            return try? JSONDecoder().decode(Date.self, from: data)
+        }
+        set {
             if let newValue = newValue {
-                KeychainHelper.standard.save(newValue, service: "NestService", account: tokenExpiryKey) 
+                do {
+                    let data = try JSONEncoder().encode(newValue)
+                    // Use instance variable
+                    _ = keychainHelper.saveData(data, for: tokenExpiryKey)
+                } catch {
+                    print("Error encoding tokenExpiry Date: \(error)")
+                }
             } else {
-                KeychainHelper.standard.delete(service: "NestService", account: tokenExpiryKey)
+                // Use instance variable
+                _ = keychainHelper.deleteItem(for: tokenExpiryKey)
             }
         }
     }
     
-    init(configuration: NestConfiguration = NestConfiguration.loadFromConfiguration()) {
+    public init(configuration: NestConfiguration = NestConfiguration.loadFromConfiguration()) {
         self.configuration = configuration
         super.init()
         checkAuthentication()
@@ -115,7 +142,7 @@ class NestOAuthManager: NSObject, ObservableObject, ASWebAuthenticationPresentat
     }
     
     // Start OAuth flow
-    func startOAuthFlow() {
+    public func startOAuthFlow() {
         // Verify we have a client ID before starting
         guard !configuration.clientID.isEmpty else {
             self.error = "Missing Nest API credentials. Please configure the app with valid credentials."
@@ -232,7 +259,7 @@ class NestOAuthManager: NSObject, ObservableObject, ASWebAuthenticationPresentat
     }
     
     // Refresh access token using refresh token
-    func refreshAccessToken() {
+    public func refreshAccessToken() {
         guard let refreshToken = self.refreshToken else {
             self.error = "No refresh token available"
             self.isAuthenticated = false
@@ -295,7 +322,7 @@ class NestOAuthManager: NSObject, ObservableObject, ASWebAuthenticationPresentat
     }
     
     // Sign out and clear tokens
-    func signOut() {
+    public func signOut() {
         self.accessToken = nil
         self.refreshToken = nil
         self.tokenExpiry = nil
@@ -303,7 +330,7 @@ class NestOAuthManager: NSObject, ObservableObject, ASWebAuthenticationPresentat
     }
     
     // Get current access token for API calls
-    func getAccessToken() -> String? {
+    public func getAccessToken() -> String? {
         if let expiry = tokenExpiry, let token = accessToken {
             // If token expires in less than 5 minutes, proactively refresh it
             if expiry.timeIntervalSinceNow < 300 {
@@ -321,12 +348,12 @@ class NestOAuthManager: NSObject, ObservableObject, ASWebAuthenticationPresentat
     }
     
     // Get project ID for device API access
-    func getProjectID() -> String {
+    public func getProjectID() -> String {
         return configuration.projectID
     }
     
     // ASWebAuthenticationPresentationContextProviding
-    func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
+    public func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
         return ASPresentationAnchor()
     }
 }

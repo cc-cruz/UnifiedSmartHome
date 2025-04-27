@@ -1,4 +1,6 @@
 import Foundation
+import Combine
+import Models
 
 class AugustTokenManager {
     private let keychainHelper: KeychainHelper
@@ -57,9 +59,10 @@ class AugustTokenManager {
         )
         
         // Make authentication request
-        let response: AugustAuthResponse = try await networkService.post(
-            endpoint: "\(AugustConfiguration.baseURL)/session",
-            body: request
+        let response: AugustAuthResponse = try await networkService.authenticatedPost(
+            url: URL(string: "\(AugustConfiguration.baseURL)/session")!,
+            body: request,
+            headers: nil
         )
         
         // Cache the new token

@@ -1,4 +1,5 @@
 import Foundation
+import Models
 
 // Service for managing rooms
 class RoomService {

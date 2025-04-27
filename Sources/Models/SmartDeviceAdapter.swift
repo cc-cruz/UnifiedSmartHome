@@ -45,8 +45,8 @@ public protocol RateLimiterProtocol {
     func reset()
 }
 
-/// Protocol for security services (biometric auth, encryption, etc.)
-public protocol SecurityServiceProtocol {
+/// Protocol for user authentication services (biometric auth, etc.)
+public protocol UserAuthenticationProtocol {
     /// Get the ID of the currently authenticated user
     /// - Returns: User ID if authenticated
     func getCurrentUserId() -> String?
@@ -61,52 +61,3 @@ public protocol SecurityServiceProtocol {
     ///   - operation: The operation to perform if authentication succeeds
     func authenticateAndPerform(_ reason: String, operation: @escaping () async throws -> Void) async throws
 }
-
-/// Protocol for audit logging
-public protocol AuditLoggerProtocol {
-    /// Log type for audit events
-    var logType: [String: String] { get }
-    
-    /// Log an event
-    /// - Parameters:
-    ///   - category: Event category
-    ///   - action: Action performed
-    ///   - metadata: Additional context
-    func logEvent(category: String, action: String, metadata: [String: String])
-}
-
-/// Log event categories
-public enum LogEventCategory: String {
-    case authentication = "AUTHENTICATION"
-    case deviceControl = "DEVICE_CONTROL"
-    case userManagement = "USER_MANAGEMENT"
-    case security = "SECURITY"
-    case configuration = "CONFIGURATION"
-    case system = "SYSTEM"
-}
-
-/// Log event actions
-public enum LogEventAction: String {
-    // Authentication actions
-    case login = "LOGIN"
-    case logout = "LOGOUT"
-    case refreshToken = "REFRESH_TOKEN"
-    
-    // Device control actions
-    case executeCommand = "EXECUTE_COMMAND"
-    case fetchDevices = "FETCH_DEVICES"
-    case getDeviceState = "GET_DEVICE_STATE"
-    
-    // Security actions
-    case rateLimitExceeded = "RATE_LIMIT_EXCEEDED"
-    case biometricAuth = "BIOMETRIC_AUTH"
-    case permissionDenied = "PERMISSION_DENIED"
-}
-
-/// Log event status
-public enum LogEventStatus: String {
-    case success = "SUCCESS"
-    case failed = "FAILED"
-    case pending = "PENDING"
-    case warning = "WARNING"
-} 

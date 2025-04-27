@@ -1,13 +1,13 @@
 import Foundation
 
 /// Protocol for audit logging services
-protocol AuditLoggerProtocol {
+public protocol AuditLoggerProtocol {
     /// Log an event with type, status, and details
     func logEvent(type: AuditEventType, action: String, status: AuditEventStatus, details: [String: Any])
 }
 
 /// Audit event types
-enum AuditEventType: String {
+public enum AuditEventType: String {
     case authentication = "auth"
     case deviceOperation = "device_op"
     case adminAction = "admin"
@@ -16,7 +16,7 @@ enum AuditEventType: String {
 }
 
 /// Audit event statuses
-enum AuditEventStatus: String {
+public enum AuditEventStatus: String {
     case started = "started"
     case success = "success"
     case failed = "failed"
@@ -26,7 +26,7 @@ enum AuditEventStatus: String {
 
 /// Default implementation to comply with SmartThings adapter
 extension AuditLogger: AuditLoggerProtocol {
-    func logEvent(type: AuditEventType, action: String, status: AuditEventStatus, details: [String: Any]) {
+    public func logEvent(type: AuditEventType, action: String, status: AuditEventStatus, details: [String: Any]) {
         var eventDetails = details
         eventDetails["action"] = action
         eventDetails["status"] = status.rawValue

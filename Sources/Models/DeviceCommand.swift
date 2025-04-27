@@ -25,29 +25,6 @@ public enum DeviceCommand {
     case executeCustomCommand(name: String, parameters: [String: Any])
 }
 
-/// Represents the current state of a device with its attributes
-public struct DeviceState {
-    /// Device identifier
-    public let deviceId: String
-    
-    /// Device type
-    public let deviceType: String
-    
-    /// Timestamp of the state
-    public let timestamp: Date
-    
-    /// Device attributes
-    public let attributes: [String: DeviceAttribute]
-    
-    /// Initializes a new device state
-    public init(deviceId: String, deviceType: String, timestamp: Date = Date(), attributes: [String: DeviceAttribute] = [:]) {
-        self.deviceId = deviceId
-        self.deviceType = deviceType
-        self.timestamp = timestamp
-        self.attributes = attributes
-    }
-}
-
 /// Represents a single device attribute with a value and metadata
 public struct DeviceAttribute {
     /// The attribute value

@@ -1,15 +1,17 @@
 import Foundation
 import Combine
+import Models
+import Helpers
 
-class UserManager: ObservableObject {
-    @Published var currentUser: User?
-    @Published var isAuthenticated = false
+public class UserManager: ObservableObject {
+    @Published public var currentUser: User?
+    @Published public var isAuthenticated = false
     @Published var isLoading = false
     @Published var error: String?
     
     // Security settings
     var requiresBiometricConfirmation = false
-    var requiresBiometricConfirmationForUnlock = true
+    public var requiresBiometricConfirmationForUnlock = true
     
     // Computed property for login state
     var isLoggedIn: Bool {
@@ -17,13 +19,13 @@ class UserManager: ObservableObject {
     }
     
     private let apiService: APIService
-    private let keychainHelper: KeychainHelper
+    private let keychainHelper: Helpers.KeychainHelper
     private var cancellables = Set<AnyCancellable>()
     
     // Singleton instance
     static let shared = UserManager()
     
-    private init(apiService: APIService = APIService(), keychainHelper: KeychainHelper = KeychainHelper()) {
+    public init(apiService: APIService = APIService(), keychainHelper: Helpers.KeychainHelper = Helpers.KeychainHelper()) {
         self.apiService = apiService
         self.keychainHelper = keychainHelper
         
@@ -33,7 +35,7 @@ class UserManager: ObservableObject {
     
     // MARK: - Authentication Methods
     
-    func login(email: String, password: String) async {
+    public func login(email: String, password: String) async {
         await MainActor.run {
             isLoading = true
             error = nil
@@ -81,13 +83,9 @@ class UserManager: ObservableObject {
         }
     }
     
-    func logout() async {
-        // Clear token from Keychain
-        do {
-            try keychainHelper.delete(service: "com.smarthome.auth", account: "token")
-        } catch {
-            print("Error deleting token: \(error.localizedDescription)")
-        }
+    public func logout() async {
+        // Clear token from Keychain - deleteItem doesn't throw
+        _ = keychainHelper.deleteItem(for: "token") // Remove try, ignore result
         
         // Log analytics event
         if let userId = currentUser?.id {
@@ -108,7 +106,7 @@ class UserManager: ObservableObject {
     
     // MARK: - User Management Methods
     
-    func getUser(id: String) async -> User? {
+    public func getUser(id: String) async -> User? {
         // In a real implementation, this would fetch from the API
         // For now, just return the current user if IDs match
         if let currentUser = currentUser, currentUser.id == id {
@@ -124,7 +122,7 @@ class UserManager: ObservableObject {
         }
     }
     
-    func updateUserRole(userId: String, newRole: User.Role) async throws {
+    public func updateUserRole(userId: String, newRole: User.Role) async throws {
         // Check if current user has permission to change roles
         guard let currentUser = currentUser,
               (currentUser.role == .owner || currentUser.role == .propertyManager) else {
@@ -136,9 +134,19 @@ class UserManager: ObservableObject {
         
         // If updating the current user, refresh local state
         if userId == currentUser.id {
-            var updatedUser = currentUser
-            updatedUser.role = newRole
+            // Create a new user object with the updated role
+            let updatedUser = User(
+                id: currentUser.id,
+                email: currentUser.email,
+                firstName: currentUser.firstName,
+                lastName: currentUser.lastName,
+                role: newRole, // Use the new role
+                properties: currentUser.properties,
+                assignedRooms: currentUser.assignedRooms,
+                guestAccess: currentUser.guestAccess
+            )
             await MainActor.run {
+                // Assign the completely new user object
                 self.currentUser = updatedUser
             }
         }
@@ -147,32 +155,27 @@ class UserManager: ObservableObject {
     // MARK: - Helper Methods
     
     private func saveToken(token: String) {
-        do {
-            try keychainHelper.save(
-                token.data(using: .utf8)!,
-                service: "com.smarthome.auth",
-                account: "token"
-            )
-        } catch {
-            print("Error saving token: \(error.localizedDescription)")
+        // Save token - saveData doesn't throw
+        guard let tokenData = token.data(using: .utf8) else {
+            print("Error: Could not convert token string to data")
+            return
         }
+        _ = keychainHelper.saveData(
+            tokenData,
+            for: "token"
+        )
     }
     
     private func checkToken() {
-        do {
-            let tokenData = try keychainHelper.get(
-                service: "com.smarthome.auth",
-                account: "token"
-            )
-            
-            if let tokenData = tokenData,
-               let token = String(data: tokenData, encoding: .utf8) {
-                // Token exists, validate with backend
-                validateToken(token)
-            }
-        } catch {
-            // No token found or error retrieving it
-            isAuthenticated = false
+        // Get token - getData doesn't throw
+        let tokenData = keychainHelper.getData(
+            for: "token"
+        )
+        
+        if let tokenData = tokenData,
+           let token = String(data: tokenData, encoding: .utf8) {
+            // Token exists, validate with backend
+            validateToken(token)
         }
     }
     
@@ -184,8 +187,8 @@ class UserManager: ObservableObject {
             .sink { [weak self] completion in
                 self?.isLoading = false
                 if case .failure = completion {
-                    // Token invalid, clear it
-                    try? self?.keychainHelper.delete(service: "com.smarthome.auth", account: "token")
+                    // Token invalid, clear it - deleteItem doesn't throw
+                    _ = self?.keychainHelper.deleteItem(for: "token") // Remove try?
                     self?.isAuthenticated = false
                 }
             } receiveValue: { [weak self] user in
@@ -200,13 +203,23 @@ class UserManager: ObservableObject {
 }
 
 // Login credentials model
-struct LoginCredentials: Codable {
-    let email: String
-    let password: String
+public struct LoginCredentials: Codable {
+    public let email: String
+    public let password: String
+    
+    public init(email: String, password: String) {
+        self.email = email
+        self.password = password
+    }
 }
 
 // Auth response model
-struct AuthResponse: Codable {
-    let user: User
-    let token: String
+public struct AuthResponse: Codable {
+    public let user: User
+    public let token: String
+    
+    public init(user: User, token: String) {
+        self.user = user
+        self.token = token
+    }
 } 

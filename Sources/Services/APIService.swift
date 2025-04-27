@@ -1,8 +1,9 @@
 import Foundation
 import Combine
+import Models
 
 // API service for handling network requests
-class APIService {
+public class APIService {
     // Base URL for API requests
     private let baseURL = "https://api.unifiedsmarthome.com"
     
@@ -17,10 +18,13 @@ class APIService {
         return decoder
     }()
     
+    // Added public initializer
+    public init() {}
+    
     // MARK: - Authentication Methods
     
     // Login with email and password
-    func login(with credentials: LoginCredentials) -> AnyPublisher<AuthResponse, Error> {
+    public func login(with credentials: LoginCredentials) -> AnyPublisher<AuthResponse, Error> {
         // In a real implementation, this would make an API call
         // For now, we'll simulate a successful login
         
@@ -49,7 +53,7 @@ class APIService {
     }
     
     // Validate token
-    func validateToken(token: String) -> AnyPublisher<User, Error> {
+    public func validateToken(token: String) -> AnyPublisher<User, Error> {
         // In a real implementation, this would validate the token with the API
         // For now, we'll simulate a valid token
         
@@ -77,7 +81,7 @@ class APIService {
     // MARK: - User Methods
     
     // Get user by ID
-    func getUser(id: String) async throws -> User {
+    public func getUser(id: String) async throws -> User {
         // In a real implementation, this would fetch the user from the API
         // For now, we'll return a mock user
         
@@ -97,7 +101,7 @@ class APIService {
     }
     
     // Update user role
-    func updateUserRole(userId: String, role: String) async throws {
+    public func updateUserRole(userId: String, role: String) async throws {
         // In a real implementation, this would update the user's role via the API
         // For now, we'll just simulate a delay
         
@@ -108,29 +112,29 @@ class APIService {
     }
     
     // MARK: - Properties
-    func getProperties() -> AnyPublisher<[Property], APIError> {
+    public func getProperties() -> AnyPublisher<[Property], SmartThingsError> {
         let endpoint = "/properties"
         
         return makeGetRequest(to: endpoint)
     }
     
     // MARK: - Devices
-    func getDevices(forProperty propertyId: String) -> AnyPublisher<[Device], APIError> {
+    public func getDevices(forProperty propertyId: String) -> AnyPublisher<[Device], SmartThingsError> {
         let endpoint = "/properties/\(propertyId)/devices"
         
         return makeGetRequest(to: endpoint)
     }
     
-    func controlDevice(deviceId: String, command: [String: Any]) -> AnyPublisher<Device, APIError> {
+    public func controlDevice(deviceId: String, command: [String: AnyCodable]) -> AnyPublisher<Device, SmartThingsError> {
         let endpoint = "/devices/\(deviceId)/control"
         
         return makePostRequest(to: endpoint, with: command)
     }
     
     // MARK: - Generic Network Methods
-    private func makeGetRequest<T: Decodable>(to endpoint: String) -> AnyPublisher<T, APIError> {
+    private func makeGetRequest<T: Decodable>(to endpoint: String) -> AnyPublisher<T, SmartThingsError> {
         guard let url = URL(string: "\(baseURL)\(endpoint)") else {
-            return Fail(error: APIError.invalidURL).eraseToAnyPublisher()
+            return Fail(error: SmartThingsError.invalidURL).eraseToAnyPublisher()
         }
         
         var request = URLRequest(url: url)
@@ -139,27 +143,27 @@ class APIService {
         }
         
         return session.dataTaskPublisher(for: request)
-            .mapError { APIError.networkError($0) }
-            .flatMap { data, response -> AnyPublisher<T, APIError> in
+            .mapError { SmartThingsError.networkError($0) }
+            .flatMap { data, response -> AnyPublisher<T, SmartThingsError> in
                 guard let httpResponse = response as? HTTPURLResponse else {
-                    return Fail(error: APIError.invalidResponse).eraseToAnyPublisher()
+                    return Fail(error: SmartThingsError.invalidResponse).eraseToAnyPublisher()
                 }
                 
                 if (200..<300).contains(httpResponse.statusCode) {
                     return Just(data)
                         .decode(type: T.self, decoder: self.jsonDecoder)
-                        .mapError { APIError.decodingError($0) }
+                        .mapError { SmartThingsError.decodingError($0) }
                         .eraseToAnyPublisher()
                 } else {
-                    return Fail(error: APIError.serverError(httpResponse.statusCode)).eraseToAnyPublisher()
+                    return Fail(error: SmartThingsError.serverError(httpResponse.statusCode)).eraseToAnyPublisher()
                 }
             }
             .eraseToAnyPublisher()
     }
     
-    private func makePostRequest<T: Encodable, U: Decodable>(to endpoint: String, with body: T) -> AnyPublisher<U, APIError> {
+    private func makePostRequest<T: Encodable, U: Decodable>(to endpoint: String, with body: T) -> AnyPublisher<U, SmartThingsError> {
         guard let url = URL(string: "\(baseURL)\(endpoint)") else {
-            return Fail(error: APIError.invalidURL).eraseToAnyPublisher()
+            return Fail(error: SmartThingsError.invalidURL).eraseToAnyPublisher()
         }
         
         var request = URLRequest(url: url)
@@ -174,23 +178,23 @@ class APIService {
             let encodedBody = try JSONEncoder().encode(body)
             request.httpBody = encodedBody
         } catch {
-            return Fail(error: APIError.decodingError(error)).eraseToAnyPublisher()
+            return Fail(error: SmartThingsError.encodingError(error)).eraseToAnyPublisher()
         }
         
         return session.dataTaskPublisher(for: request)
-            .mapError { APIError.networkError($0) }
-            .flatMap { data, response -> AnyPublisher<U, APIError> in
+            .mapError { SmartThingsError.networkError($0) }
+            .flatMap { data, response -> AnyPublisher<U, SmartThingsError> in
                 guard let httpResponse = response as? HTTPURLResponse else {
-                    return Fail(error: APIError.invalidResponse).eraseToAnyPublisher()
+                    return Fail(error: SmartThingsError.invalidResponse).eraseToAnyPublisher()
                 }
                 
                 if (200..<300).contains(httpResponse.statusCode) {
                     return Just(data)
                         .decode(type: U.self, decoder: self.jsonDecoder)
-                        .mapError { APIError.decodingError($0) }
+                        .mapError { SmartThingsError.decodingError($0) }
                         .eraseToAnyPublisher()
                 } else {
-                    return Fail(error: APIError.serverError(httpResponse.statusCode)).eraseToAnyPublisher()
+                    return Fail(error: SmartThingsError.serverError(httpResponse.statusCode)).eraseToAnyPublisher()
                 }
             }
             .eraseToAnyPublisher()

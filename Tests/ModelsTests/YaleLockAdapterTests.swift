@@ -1,5 +1,6 @@
 import XCTest
 @testable import Models
+import Services
 
 final class YaleLockAdapterTests: XCTestCase {
     var adapter: YaleLockAdapter!
