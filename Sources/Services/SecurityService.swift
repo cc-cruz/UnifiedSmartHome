@@ -2,7 +2,7 @@ import Foundation
 import Models
 import Security
 
-public class SecurityService: SecurityServiceProtocol {
+public class SecurityService: OperationalSecurityProtocol {
     private let userManager: UserManager
     private let auditLogger: AuditLogger
     private let deviceManager: DeviceManagerProtocol
@@ -46,8 +46,7 @@ public class SecurityService: SecurityServiceProtocol {
         // Check if user has permission to control this lock
         // TODO: Update permission check logic based on User model properties (Sprint 3)
         // For now, assume a simple check exists on LockDevice or User
-        // guard lock.canPerformRemoteOperation(by: user) else { 
-        guard user.role == .OWNER || user.role == .PROPERTY_MANAGER else { // Simplified check for now
+        guard user.role == .owner || user.role == .propertyManager else { // Simplified check for now
             auditLogger.logSecurityEvent(
                 type: "access_denied",
                 details: [

@@ -158,9 +158,6 @@ struct DevicesView: View {
         List {
             // Room section
             Section(header: Text("Living Room")) {
-                DeviceListItem(name: "Smart TV", type: "TV", isOnline: true)
-                DeviceListItem(name: "Ceiling Light", type: "Light", isOnline: true)
-                
                 // Show thermostats if we have any and we're not filtering them out
                 if selectedFilter == .all {
                     ForEach(thermostatViewModel.thermostats.filter { $0.name.contains("Living") }) { thermostat in
@@ -173,17 +170,9 @@ struct DevicesView: View {
                         }
                     }
                 }
-                
-                if thermostatViewModel.thermostats.isEmpty && (selectedFilter == .all || selectedFilter == .thermostats) {
-                    DeviceListItem(name: "Air Conditioner", type: "Thermostat", isOnline: true)
-                }
             }
             
             Section(header: Text("Kitchen")) {
-                DeviceListItem(name: "Refrigerator", type: "Appliance", isOnline: true)
-                DeviceListItem(name: "Microwave", type: "Appliance", isOnline: false)
-                DeviceListItem(name: "Coffee Maker", type: "Appliance", isOnline: true)
-                
                 // Show thermostats if we have any and we're not filtering them out
                 if selectedFilter == .all {
                     ForEach(thermostatViewModel.thermostats.filter { $0.name.contains("Kitchen") }) { thermostat in
@@ -199,10 +188,6 @@ struct DevicesView: View {
             }
             
             Section(header: Text("Bedroom")) {
-                DeviceListItem(name: "Ceiling Fan", type: "Fan", isOnline: true)
-                DeviceListItem(name: "Bedside Lamp", type: "Light", isOnline: true)
-                DeviceListItem(name: "Smart Speaker", type: "Speaker", isOnline: true)
-                
                 // Show thermostats if we have any and we're not filtering them out
                 if selectedFilter == .all {
                     ForEach(thermostatViewModel.thermostats.filter { $0.name.contains("Bedroom") }) { thermostat in
