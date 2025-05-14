@@ -1,11 +1,11 @@
 import Foundation
 
-/// Scene request for creation/update
-// public struct SmartThingsSceneRequest: Codable {
-//     public let name: String
-//     public let actions: [SmartThingsSceneAction]
-//     public let roomId: String?
-// }
+/// Scene request used when creating or updating a scene
+public struct SmartThingsSceneRequest: Codable {
+    public let name: String
+    public let actions: [SmartThingsSceneAction]
+    public let roomId: String?
+}
 
 /// Scene action definition
 public struct SmartThingsSceneAction: Codable {

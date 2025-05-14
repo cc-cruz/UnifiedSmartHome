@@ -152,6 +152,90 @@ public class LightDevice: AbstractDevice {
         )
     }
     
+    // ADDED: Convenience initializer for SmartThingsDevice data
+    public convenience init?(fromDevice deviceData: SmartThingsDevice) {
+        let id = deviceData.deviceId
+        let name = deviceData.name
+
+        var isOnValue: Bool = false
+        if let switchState = deviceData.state["switch"]?.value as? String {
+            isOnValue = (switchState.lowercased() == "on")
+        }
+
+        var brightnessValue: Double? = nil
+        let dimmingSupported = deviceData.capabilities.contains("switchLevel")
+        if dimmingSupported {
+            if let levelAnyCodable = deviceData.state["level"]?.value { // From Switch Level capability
+                if let levelDouble = levelAnyCodable as? Double {
+                    brightnessValue = levelDouble
+                } else if let levelInt = levelAnyCodable as? Int {
+                    brightnessValue = Double(levelInt)
+                }
+            }
+        }
+
+        var colorValue: LightColor? = nil
+        let colorSupported = deviceData.capabilities.contains("colorControl")
+        if colorSupported {
+            // SmartThings hue and saturation are 0-100 (percent)
+            // Our LightColor hue is 0-360. Brightness is 0-100.
+            var huePercent: Double? = nil
+            var saturationPercent: Double? = nil
+
+            if let hueAny = deviceData.state["hue"]?.value {
+                if let h = hueAny as? Double { huePercent = h }
+                else if let h = hueAny as? Int { huePercent = Double(h) }
+            }
+            if let saturationAny = deviceData.state["saturation"]?.value {
+                if let s = saturationAny as? Double { saturationPercent = s }
+                else if let s = saturationAny as? Int { saturationPercent = Double(s) }
+            }
+            
+            // If hue and saturation are present, construct LightColor
+            // Brightness for LightColor can come from the main brightnessValue if available,
+            // or a default if not (e.g., 100% if light is on and no specific brightness found).
+            if let h = huePercent, let s = saturationPercent {
+                let hueDegrees = h * 3.6 // Convert 0-100 scale to 0-360 scale
+                let finalBrightness = brightnessValue ?? (isOnValue ? 100.0 : 0.0)
+                colorValue = LightColor(hue: hueDegrees, saturation: s, brightness: finalBrightness)
+            } else if let colorMap = deviceData.state["color"]?.value as? [String: Any] {
+                // Fallback to 'color' attribute if hue/saturation direct attributes aren't there
+                if let hAny = colorMap["hue"], let sAny = colorMap["saturation"] {
+                    var hPercent: Double? = nil
+                    var sPercent: Double? = nil
+                    if let h = hAny as? Double { hPercent = h }
+                    else if let h = hAny as? Int { hPercent = Double(h) }
+                    if let s = sAny as? Double { sPercent = s }
+                    else if let s = sAny as? Int { sPercent = Double(s) }
+
+                    if let hVal = hPercent, let sVal = sPercent {
+                        let hueDegrees = hVal * 3.6
+                        let bVal = colorMap["level"] as? Double ?? brightnessValue ?? (isOnValue ? 100.0 : 0.0)
+                        colorValue = LightColor(hue: hueDegrees, saturation: sVal, brightness: bVal)
+                    }
+                }
+            }
+        }
+        
+        self.init(
+            id: id,
+            name: name,
+            room: deviceData.roomId ?? "Unknown",
+            manufacturer: deviceData.manufacturerName ?? "Unknown",
+            model: deviceData.deviceTypeName ?? deviceData.ocf?.fv ?? "Light",
+            firmwareVersion: deviceData.ocf?.fv ?? "Unknown",
+            isOnline: true,
+            lastSeen: nil,
+            dateAdded: Date(),
+            metadata: [:],
+            isOn: isOnValue,
+            brightness: brightnessValue,
+            color: colorValue,
+            supportsColor: colorSupported,
+            supportsDimming: dimmingSupported
+        )
+    }
+    
     /// Turn the light on
     public func turnOn() {
         self.isOn = true

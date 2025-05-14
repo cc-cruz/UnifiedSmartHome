@@ -150,76 +150,66 @@ class DeviceService: DeviceManagerProtocol {
         throw lastError ?? DeviceServiceError.commandExecutionFailed // Throw last encountered error, default to general failure
     }
 
+    // MARK: - DeviceManagerProtocol Methods Using SmartDevice (Stubs)
 
-    // MARK: - Methods to Re-evaluate or Remove
-
-    // These methods operated on the old in-memory dictionary and are less relevant
-    // when adapters are the source of truth. They might be removed or adapted
-    // depending on whether DeviceManagerProtocol requires them.
-
-    func getDevice(id: String) async throws -> AbstractDevice {
-        // This should likely just call getDeviceState if needed by the protocol
-        print("WARN: DeviceService.getDevice(id:) called - consider using getDeviceState.")
-        return try await getDeviceState(id: id)
+    func getDevice(id: String) async throws -> SmartDevice? {
+        print("STUB: DeviceService.getDevice(id:) called - Implementation needed.")
+        // TODO: Implement logic to find the correct adapter and call its getDeviceState,
+        //       then attempt to cast/convert the result to SmartDevice? or fetch specific SmartDevice data.
+        //       For now, returning nil or re-throwing getDeviceState error after casting might work.
+        fatalError("Not implemented")
     }
 
-    // updateDeviceState with AnyCodable seems complex and potentially unnecessary
-    // if state updates come via executeCommand -> getDeviceState.
-    func updateDeviceState(_ device: AbstractDevice, with data: [String : AnyCodable]?) async throws {
-         print("WARN: DeviceService.updateDeviceState with AnyCodable data is likely obsolete.")
-         // If needed, this would require finding the correct adapter and potentially
-         // mapping the AnyCodable data back to a specific adapter command/update mechanism.
-         // This is highly complex and error-prone. Best avoided.
-         throw DeviceServiceError.operationNotSupported("Direct state update with AnyCodable")
+    func fetchDevice(id: String) async throws -> SmartDevice? {
+        print("STUB: DeviceService.fetchDevice(id:) called - Implementation needed.")
+        // TODO: Implement logic, potentially similar to getDevice, but maybe focused on fetching
+        //       fresh data from the source API via an adapter.
+        fatalError("Not implemented")
     }
 
-    // Specific state updates should go through executeCommand
+    func addDevice(_ device: SmartDevice) async throws {
+        print("STUB: DeviceService.addDevice(SmartDevice) called - Implementation needed.")
+        // TODO: Logic likely involves finding the responsible adapter and potentially
+        //       calling an adapter-specific registration or update method.
+        //       Manual addition is complex; often handled by adapter discovery.
+        fatalError("Not implemented")
+    }
+
+    // Note: removeDevice(id:) signature matches both AbstractDevice and SmartDevice uses in the protocol.
+    // The existing warning/throw implementation might suffice if manual removal isn't supported.
+    // If specific SmartDevice removal logic is needed, this needs adjusting.
+    func removeDevice(id: String) async throws {
+        print("WARN: DeviceService.removeDevice called - Device removal usually handled by vendor platforms.")
+        throw DeviceServiceError.operationNotSupported("Manual device removal")
+    }
+
     func updateLockState(deviceId: String, newState: LockDevice.LockState) async throws {
-        print("WARN: DeviceService.updateLockState called - use executeCommand(.lock/.unlock) instead.")
+        print("STUB: DeviceService.updateLockState(deviceId:newState:) called - Implementation needed.")
+        // TODO: Implement by finding the correct adapter and executing the lock/unlock command.
+        //       Could potentially call the existing executeCommand(deviceId:command:) helper.
         let command: DeviceCommand = (newState == .locked) ? .lock : .unlock
-        _ = try await executeCommand(deviceId: deviceId, command: command)
-        // Note: We discard the returned AbstractDevice here as this func doesn't return it.
+        _ = try await executeCommand(deviceId: deviceId, command: command) // Re-use existing command logic
+        // We might need to fetch the updated SmartDevice state afterwards if the protocol required it.
+        print("INFO: Attempted lock state update via executeCommand.")
+        // fatalError("Not implemented") // Temporarily using executeCommand
     }
 
     func updateSwitchState(deviceId: String, isOn: Bool) async throws {
-        print("WARN: DeviceService.updateSwitchState called - use executeCommand(.setSwitch) instead.")
-         _ = try await executeCommand(deviceId: deviceId, command: .setSwitch(isOn))
-    }
-    
-    // Device health should be part of the state returned by getDeviceState
-    func updateDeviceHealth(_ device: AbstractDevice, state: String) async throws {
-         print("WARN: DeviceService.updateDeviceHealth is likely obsolete. Health is part of device state.")
-         // If explicit health update needed, maybe map state to a specific command?
-         // Otherwise, health (e.g., isOnline) should come from getDeviceState polling/events.
-         throw DeviceServiceError.operationNotSupported("Explicit health update")
+        print("STUB: DeviceService.updateSwitchState(deviceId:isOn:) called - Implementation needed.")
+        // TODO: Implement similarly to updateLockState using executeCommand.
+        _ = try await executeCommand(deviceId: deviceId, command: .setSwitch(isOn))
+        print("INFO: Attempted switch state update via executeCommand.")
+        // fatalError("Not implemented") // Temporarily using executeCommand
     }
 
-    // fetchDevice is redundant if getDeviceState is used.
-    func fetchDevice(id: String) async throws -> AbstractDevice? {
-        print("WARN: DeviceService.fetchDevice called - consider using getDeviceState.")
-        do {
-            return try await getDeviceState(id: id)
-        } catch DeviceServiceError.deviceNotFound {
-            return nil // Match original optional return type
-        } catch {
-             throw error // Propagate other errors
-        }
+    func updateDeviceHealth(_ device: SmartDevice, state: String) async throws {
+        print("STUB: DeviceService.updateDeviceHealth(SmartDevice:state:) called - Implementation needed.")
+        // TODO: Implement logic. This might involve finding the adapter and calling
+        //       an adapter-specific health update method, or this might be purely
+        //       informational based on adapter polling/events and not directly settable.
+        fatalError("Not implemented")
     }
 
-    // Adding/removing devices is managed by the vendor platforms, not this service.
-    // Adapters discover devices via fetchDevices.
-    func addDevice(_ device: AbstractDevice) async throws {
-         print("WARN: DeviceService.addDevice called - Device addition is handled by vendor platforms.")
-         throw DeviceServiceError.operationNotSupported("Manual device addition")
-    }
-
-    func removeDevice(id: String) async throws {
-        print("WARN: DeviceService.removeDevice called - Device removal is handled by vendor platforms.")
-        // We *could* potentially tell an adapter to revoke access/delete credentials
-        // associated with a deviceId if the protocol demanded it.
-        throw DeviceServiceError.operationNotSupported("Manual device removal")
-    }
-    
     // MARK: - Helper for Error Checking
     
     // Helper to check for various "not found" type errors from adapters
@@ -239,8 +229,8 @@ class DeviceService: DeviceManagerProtocol {
     }
 }
 
-// Updated/Simplified Error types for DeviceService
-enum DeviceServiceError: Error, Equatable {
+// MODIFIED: Make DeviceServiceError public
+public enum DeviceServiceError: Error, Equatable {
     case deviceNotFound
     case commandExecutionFailed
     case operationNotSupported(String) // Indicate which operation

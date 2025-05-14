@@ -90,7 +90,21 @@ struct HueXyColor: Decodable {
     let y: Double
 }
 
-// Other structs (HueDynamics, HueAlert, HueGamut etc.) can be added if needed
+// MODIFIED: Define HueDynamics and HueAlert with properties based on API documentation
+struct HueDynamics: Decodable {
+    let status: String?
+    let status_values: [String]?
+    let speed: Double?
+    let speed_valid: Bool?
+}
+
+struct HueAlert: Decodable {
+    let action_values: [String]? // e.g., ["breathe"]
+    // For PUT, a separate Encodable payload would be used if sending an alert action
+}
+
+// COMMENT UPDATED: Note that these are now defined above
+// Other structs (HueGamut etc.) can be added if needed
 
 // MARK: - Hue API Payloads (for PUT requests)
 
@@ -145,16 +159,20 @@ class HueLightAdapter: SmartDeviceAdapter {
     private var applicationKey: String? // Hue Application Key (username) obtained during pairing
     private var bearerToken: String?    // OAuth Bearer Token (primarily for remote API, but good practice)
 
+    // ADDED: Property to store the bridge base URL
+    private let bridgeBaseURL: URL
 
     // TODO: Add rate limiting, retry logic if needed for Hue API
 
+    // MODIFIED: Initializer to accept bridgeBaseURL
     // init(networkService: NetworkServiceProtocol, tokenManager: HueTokenManager) {
-    init(networkService: NetworkServiceProtocol, applicationKey: String? = nil) { // App Key needed for local API
+    init(networkService: NetworkServiceProtocol, bridgeBaseURL: URL, applicationKey: String? = nil) { // App Key needed for local API
         self.networkService = networkService
+        self.bridgeBaseURL = bridgeBaseURL // Store the base URL
         self.applicationKey = applicationKey
         // self.tokenManager = tokenManager
-        // NOTE: NetworkService needs to be configured with the Bridge IP
-        // and add 'hue-application-key' header with self.applicationKey
+        // NOTE: NetworkService needs to be configured with the Bridge IP (handled by bridgeBaseURL now)
+        // and add 'hue-application-key' header with self.applicationKey (handled by buildHueHeaders)
     }
 
     // MARK: - SmartDeviceAdapter Conformance
@@ -165,7 +183,8 @@ class HueLightAdapter: SmartDeviceAdapter {
         // Let's assume it's the Bearer token for now.
         self.bearerToken = authToken
         // TODO: If using remote API, validate token or perform initial setup
-        print("HueLightAdapter initialized. Bearer token set (if applicable). Application Key: \\(applicationKey ?? "Not Set")")
+        let keyDesc = applicationKey ?? "Not Set"
+        print("HueLightAdapter initialized. Bearer token set (if applicable). Application Key: \(keyDesc)")
     }
 
     func refreshAuthentication() async throws -> Bool {
@@ -186,15 +205,17 @@ class HueLightAdapter: SmartDeviceAdapter {
             throw SmartDeviceError.authenticationRequired("Missing Hue Application Key")
         }
 
-        // Fetch all light resources
-        let endpoint = HueConfiguration.localApiBasePath + "/light"
+        // MODIFIED: Construct full URL and use authenticatedGet
+        let lightEndpoint = HueConfiguration.localApiBasePath + "/light"
+        let url = bridgeBaseURL.appendingPathComponent(lightEndpoint)
         
         do {
-            let response: HueGetResponse<HueLight> = try await networkService.get(endpoint: endpoint)
+            let response: HueGetResponse<HueLight> = try await networkService.authenticatedGet(url: url, headers: buildHueHeaders())
 
             guard response.errors.isEmpty else {
                 // TODO: Handle specific Hue errors
-                print("Hue API Error fetching devices: \\(response.errors.first?.description ?? "Unknown error")")
+                let errDesc = response.errors.first?.description ?? "Unknown"
+                print("Hue API Error fetching devices: \(errDesc)")
                 throw SmartDeviceError.apiError(response.errors.first?.description ?? "Unknown Hue API error")
             }
 
@@ -213,14 +234,17 @@ class HueLightAdapter: SmartDeviceAdapter {
         print("HueLightAdapter: getDeviceState(deviceId: \\(deviceId))")
         guard applicationKey != nil else { throw SmartDeviceError.authenticationRequired("Missing Hue Application Key") }
 
-        let endpoint = "\\(HueConfiguration.localApiBasePath)/light/\\(deviceId)"
+        // MODIFIED: Construct full URL and use authenticatedGet
+        let lightDeviceEndpoint = "\(HueConfiguration.localApiBasePath)/light/\(deviceId)"
+        let url = bridgeBaseURL.appendingPathComponent(lightDeviceEndpoint)
         
         do {
-            let response: HueGetResponse<HueLight> = try await networkService.get(endpoint: endpoint)
+            let response: HueGetResponse<HueLight> = try await networkService.authenticatedGet(url: url, headers: buildHueHeaders())
 
             guard response.errors.isEmpty else {
                 // TODO: Handle specific Hue errors (e.g., device not found)
-                 print("Hue API Error fetching state for \\(deviceId): \\(response.errors.first?.description ?? "Unknown error")")
+                let errDesc = response.errors.first?.description ?? "Unknown"
+                print("Hue API Error fetching state for \(deviceId): \(errDesc)")
                  throw SmartDeviceError.apiError(response.errors.first?.description ?? "Unknown Hue API error")
             }
 
@@ -245,9 +269,10 @@ class HueLightAdapter: SmartDeviceAdapter {
         print("HueLightAdapter: executeCommand(deviceId: \\(deviceId), command: \\(command))")
         guard applicationKey != nil else { throw SmartDeviceError.authenticationRequired("Missing Hue Application Key") }
 
-        let endpoint = "\\(HueConfiguration.localApiBasePath)/light/\\(deviceId)"
+        // MODIFIED: Construct full URL and use authenticatedPut
+        let lightDeviceEndpoint = "\(HueConfiguration.localApiBasePath)/light/\(deviceId)"
+        let url = bridgeBaseURL.appendingPathComponent(lightDeviceEndpoint)
         
-        // Prepare payload based on command
         let payload: Data
         do {
             payload = try encodeCommandPayload(command: command)
@@ -257,10 +282,12 @@ class HueLightAdapter: SmartDeviceAdapter {
 
         // Make PUT request
         do {
-             let response: HuePutResponse = try await networkService.put(endpoint: endpoint, body: payload)
+             // MODIFIED: Use authenticatedPut
+             let response: HuePutResponse = try await networkService.authenticatedPut(url: url, body: payload, headers: buildHueHeaders())
 
              guard response.errors.isEmpty else {
-                 print("Hue API Error executing command for \\(deviceId): \\(response.errors.first?.description ?? "Unknown error")")
+                 let errDesc = response.errors.first?.description ?? "Unknown"
+                 print("Hue API Error executing command for \(deviceId): \(errDesc)")
                  throw SmartDeviceError.commandFailed(response.errors.first?.description ?? "Unknown Hue API error")
              }
              
@@ -292,6 +319,15 @@ class HueLightAdapter: SmartDeviceAdapter {
     }
 
     // MARK: - Helper Methods (Private)
+
+    // ADDED: Helper to build headers for Hue API calls
+    private func buildHueHeaders() -> [String: String]? {
+        guard let key = self.applicationKey else {
+            print("Warning: Hue Application Key not set for API call, 'hue-application-key' header will be missing.")
+            return ["Content-Type": "application/json"] // Still send content type
+        }
+        return ["hue-application-key": key, "Content-Type": "application/json"]
+    }
 
     /// Maps a HueLight API object to our internal LightDevice model
     private func mapHueLightToLightDevice(_ hueLight: HueLight) -> LightDevice? {

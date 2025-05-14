@@ -1,0 +1,38 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# UnifiedSmartHome Project Structure
+
+This project is a Swift-based smart home application.
+
+## Key Files and Directories:
+
+*   **Package Manifest:** [Package.swift](mdc:Package.swift) defines the Swift Package Manager dependencies and targets.
+*   **iOS Application Core:** The `ios/` directory contains the main iOS application code.
+    *   **App Entry Point:** [ios/UnifiedSmartHomeApp.swift](mdc:ios/UnifiedSmartHomeApp.swift) is likely the main entry point for the iOS app.
+    *   **iOS Architecture:** The `ios/` directory is structured with common patterns:
+        *   [ios/Adapters/](mdc:ios/Adapters) - Contains adapter implementations for specific device platforms (e.g., SmartThings for iOS).
+        *   [ios/Models/](mdc:ios/Models) - Data models for the iOS application.
+        *   [ios/Views/](mdc:ios/Views) - SwiftUI or UIKit views.
+        *   [ios/ViewModels/](mdc:ios/ViewModels) - ViewModels for the views.
+        *   [ios/Network/](mdc:ios/Network) - Networking layer specific to the iOS app.
+        *   [ios/Helpers/](mdc:ios/Helpers) - Utility and helper classes.
+        *   [ios/DAL/](mdc:ios/DAL) - Data Access Layer.
+        *   [ios/Security/](mdc:ios/Security) - Security-related components.
+    *   **iOS Configuration:** [ios/Info.plist](mdc:ios/Info.plist) contains iOS application metadata.
+*   **Shared Swift Package Source:** The `Sources/` directory contains code for the Swift package(s) used by the project.
+    *   **Shared Adapters:** This directory also contains adapter logic, such as [Sources/Adapters/HueLightAdapter.swift](mdc:Sources/Adapters/HueLightAdapter.swift).
+    *   **Webhook Handling:** [Sources/Adapters/SmartThingsWebhookHandler.swift](mdc:Sources/Adapters/SmartThingsWebhookHandler.swift) is responsible for processing webhooks.
+*   **Tests:** The `Tests/` directory contains unit and integration tests.
+*   **Backend:** The `backend/` directory might contain server-side components.
+*   **Documentation:** The `docs/` directory likely holds project documentation.
+
+## Important Adapters:
+
+*   [ios/Adapters/SmartThingsAdapter.swift](mdc:ios/Adapters/SmartThingsAdapter.swift) - Handles communication with SmartThings devices within the iOS app context.
+*   [Sources/Adapters/HueLightAdapter.swift](mdc:Sources/Adapters/HueLightAdapter.swift) - Manages Philips Hue lights, part of the shared Swift package.
+*   [Sources/Adapters/SmartThingsWebhookHandler.swift](mdc:Sources/Adapters/SmartThingsWebhookHandler.swift) - Processes incoming SmartThings webhook events.
+
+This rule provides a high-level overview. Specific modules or files might have their own detailed rules.

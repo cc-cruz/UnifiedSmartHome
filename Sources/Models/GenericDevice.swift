@@ -40,6 +40,28 @@ public class GenericDevice: AbstractDevice {
         )
     }
     
+    // ADDED: Convenience initializer for SmartThingsDevice data
+    public convenience init?(fromDevice deviceData: SmartThingsDevice) {
+        let id = deviceData.deviceId
+        let name = deviceData.name
+
+        // Convert [String: AnyCodable] to [String: Any]
+        // This might lose some type information if AnyCodable was wrapping complex Codable types,
+        // but for basic JSON-like values, it should be acceptable for GenericDevice.attributes.
+        let rawAttributes = deviceData.state.mapValues { $0.value } 
+
+        self.init(
+            id: id,
+            name: name,
+            room: deviceData.roomId ?? "Unknown",
+            manufacturer: deviceData.manufacturerName ?? "Unknown",
+            model: deviceData.deviceTypeName ?? deviceData.ocf?.fv ?? "Generic",
+            firmwareVersion: deviceData.ocf?.fv ?? "Unknown",
+            capabilities: deviceData.capabilities,
+            attributes: rawAttributes
+        )
+    }
+    
     /// Check if the device has a specific capability
     /// - Parameter capability: The capability to check
     /// - Returns: True if the device has the capability

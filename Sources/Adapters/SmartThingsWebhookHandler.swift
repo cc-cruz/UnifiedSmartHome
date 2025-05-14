@@ -102,9 +102,16 @@ public class SmartThingsWebhookHandler: SmartThingsWebhookHandlerProtocol {
     
     private func handleDeviceHealth(_ event: SmartThingsWebhookEventPayload) async throws {
         // Update device health status
-        let device = try await deviceManager.getDevice(id: event.deviceId)
+        // Safely unwrap the result of getDevice
+        guard let device = try await deviceManager.getDevice(id: event.deviceId) else {
+            print("Error: Device \(event.deviceId) not found when handling device health event.")
+            // Decide how to handle: throw an error, or just log and return?
+            // Throwing might be appropriate if health updates require the device object.
+             throw DeviceServiceError.deviceNotFound // Or a more specific webhook error
+        }
         
         if let healthState = event.data["healthState"]?.value as? String {
+            // Now call updateDeviceHealth with the non-optional device
             try await deviceManager.updateDeviceHealth(device, state: healthState)
         }
     }
@@ -115,11 +122,19 @@ public class SmartThingsWebhookHandler: SmartThingsWebhookHandlerProtocol {
             switch lifecycleEvent {
             case "ADDED":
                 // Fetch and add new device
-                if let device = try await deviceManager.fetchDevice(id: event.deviceId) {
-                    try await deviceManager.addDevice(device)
+                // Safely unwrap the result of fetchDevice
+                guard let device = try await deviceManager.fetchDevice(id: event.deviceId) else {
+                    print("Error: Could not fetch details for newly added device \(event.deviceId).")
+                    // Decide how to handle: log and return, or throw?
+                    // Throwing might stop processing further lifecycle events if desired.
+                     throw DeviceServiceError.deviceNotFound // Or specific fetch error
                 }
+                // Call addDevice with the non-optional device
+                try await deviceManager.addDevice(device)
+
             case "REMOVED":
                 // Remove device
+                // removeDevice(id:) doesn't require unwrapping as it takes the ID directly
                 try await deviceManager.removeDevice(id: event.deviceId)
             default:
                 break

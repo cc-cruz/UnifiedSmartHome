@@ -61,7 +61,7 @@ public class SmartThingsMetrics {
     
     // MARK: - Group Operation Metrics
     
-    func recordGroupOperation(groupId: String, operation: String, status: String) {
+    public func recordGroupOperation(groupId: String, operation: String, status: String) {
         queue.async {
             if self.groupOperationCounts[groupId] == nil {
                 self.groupOperationCounts[groupId] = [:]
@@ -71,7 +71,7 @@ public class SmartThingsMetrics {
         }
     }
     
-    func getGroupOperationCounts() -> [String: [String: Int]] {
+    public func getGroupOperationCounts() -> [String: [String: Int]] {
         queue.sync { groupOperationCounts }
     }
     
@@ -101,7 +101,7 @@ public class SmartThingsMetrics {
     
     // MARK: - Metrics Summary
     
-    func getMetricsSummary() -> [String: Any] {
+    public func getMetricsSummary() -> [String: Any] {
         queue.sync {
             [
                 "errorCounts": errorCounts,
@@ -124,6 +124,20 @@ public class SmartThingsMetrics {
             self.sceneOperationCounts.removeAll()
             self.groupOperationCounts.removeAll()
             self.operationLatencies.removeAll()
+        }
+    }
+    
+    // ADDED: Generic counter increment method
+    public func incrementCounter(named counterName: String) {
+        queue.async {
+            // For simplicity, let's use deviceOperationCounts with a generic deviceId like "appCounters"
+            // Or, you can add a new dictionary specifically for general counters.
+            let genericDeviceId = "appCounters"
+            if self.deviceOperationCounts[genericDeviceId] == nil {
+                self.deviceOperationCounts[genericDeviceId] = [:]
+            }
+            self.deviceOperationCounts[genericDeviceId]?[counterName, default: 0] += 1
+            // print("Incremented counter: \(counterName)") // Optional: for debugging
         }
     }
 } 

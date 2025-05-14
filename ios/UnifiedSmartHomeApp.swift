@@ -73,7 +73,17 @@ class AppServices: ObservableObject {
         let augustNetworkService = NetworkService() // Configure for August API
         let yaleNetworkService = NetworkService() // Configure for Yale API
         let smartThingsNetworkService = NetworkService() // Configure for SmartThings API
-        let hueNetworkService = NetworkService(/* baseURL: "https://<bridge-ip>" */) // Needs Bridge IP!
+        
+        // MODIFIED: Define Hue Bridge IP and create base URL
+        // TODO: Replace this placeholder with actual bridge IP discovery/configuration
+        // Using 0.0.0.0 as a valid placeholder for compilation when a real bridge is not available for testing.
+        let hueBridgeIP = "0.0.0.0" // <<< --- Placeholder for compilation. Replace with real IP or discovery later! ---
+        guard let hueBridgeBaseURL = URL(string: "https://\(hueBridgeIP)") else {
+            // This should ideally not fail with a hardcoded valid format string like above.
+            // If it does, there's a fundamental issue with URL string formatting.
+            fatalError("Critical error: Could not form Hue Bridge Base URL from placeholder IP.") 
+        }
+        let hueNetworkService = NetworkService() // Initializer does not take baseURL
 
         // Token Managers
         let nestTokenManager = NestOAuthManager(keychainHelper: self.keychainHelper, networkService: nestNetworkService)
@@ -88,7 +98,8 @@ class AppServices: ObservableObject {
         self.augustLockAdapter = AugustLockAdapter(networkService: augustNetworkService, tokenManager: augustTokenManager)
         self.yaleLockAdapter = YaleLockAdapter(networkService: yaleNetworkService, tokenManager: yaleTokenManager) // Placeholder!
         self.smartThingsAdapter = SmartThingsAdapter(networkService: smartThingsNetworkService, tokenManager: smartThingsTokenManager)
-        self.hueLightAdapter = HueLightAdapter(networkService: hueNetworkService, applicationKey: hueAppKey)
+        // MODIFIED: Pass bridgeBaseURL to HueLightAdapter initializer
+        self.hueLightAdapter = HueLightAdapter(networkService: hueNetworkService, bridgeBaseURL: hueBridgeBaseURL, applicationKey: hueAppKey)
         
         let allAdapters: [SmartDeviceAdapter] = [
             self.nestAdapter, 

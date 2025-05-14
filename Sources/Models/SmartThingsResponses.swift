@@ -97,7 +97,7 @@ public struct SmartThingsStateValue: Codable {
     public let data: AnyCodable?
 }
 
-struct SmartThingsCommandResponse: Codable {
-    let status: String
-    let message: String?
+public struct SmartThingsCommandResponse: Codable {
+    public let status: String
+    public let message: String?
 } 

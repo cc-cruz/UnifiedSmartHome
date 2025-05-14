@@ -30,7 +30,7 @@ public class SecurityService: OperationalSecurityProtocol {
         }
         
         // Get the lock device using the injected deviceManager
-        guard let lock = try? await getLockDevice(id: deviceId) else {
+        guard let _ = try? await getLockDevice(id: deviceId) else {
             auditLogger.logSecurityEvent(
                 type: "access_denied",
                 details: [

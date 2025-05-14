@@ -59,6 +59,56 @@ public class LockDevice: AbstractDevice {
         )
     }
     
+    // ADDED: Convenience initializer for SmartThingsDevice data
+    public convenience init?(fromDevice deviceData: SmartThingsDevice) {
+        let id = deviceData.deviceId
+        let name = deviceData.name
+
+        var lockStateValue: LockState = .unknown
+        if let lockString = deviceData.state["lock"]?.value as? String {
+            switch lockString.lowercased() {
+            case "locked":
+                lockStateValue = .locked
+            case "unlocked":
+                lockStateValue = .unlocked
+            case "jammed":
+                lockStateValue = .jammed
+            default:
+                lockStateValue = .unknown
+            }
+        } else {
+            // If lock state is critical and missing, consider returning nil
+            // For now, defaults to .unknown
+        }
+
+        var batteryLevelValue: Int = 0 // Default to 0 if not found or unparseable
+        if let batteryAnyCodable = deviceData.state["battery"]?.value { // From Battery capability
+            if let batInt = batteryAnyCodable as? Int {
+                batteryLevelValue = batInt
+            } else if let batDouble = batteryAnyCodable as? Double {
+                batteryLevelValue = Int(batDouble)
+            }
+        }
+
+        // Other properties like lastStateChange, isRemoteOperationEnabled, accessHistory
+        // are not directly available from the basic SmartThingsDevice state/capabilities usually.
+        // They would be managed internally by the app or require more detailed API calls.
+
+        self.init(
+            id: id,
+            name: name,
+            room: deviceData.roomId ?? "Unknown",
+            manufacturer: deviceData.manufacturerName ?? "Unknown",
+            model: deviceData.deviceTypeName ?? deviceData.ocf?.fv ?? "Lock",
+            firmwareVersion: deviceData.ocf?.fv ?? "Unknown",
+            currentState: lockStateValue,
+            batteryLevel: batteryLevelValue,
+            lastStateChange: nil, // Not typically available from basic fetch
+            isRemoteOperationEnabled: true // Default, or derive from capabilities if possible
+            // accessHistory: [] // Default
+        )
+    }
+    
     // Key methods
     public func updateLockState(to state: LockState, initiatedBy userId: String) {
         self.currentState = state

@@ -54,6 +54,36 @@ public class SwitchDevice: AbstractDevice {
         )
     }
     
+    // ADDED: Convenience initializer for SmartThingsDevice data
+    public convenience init?(fromDevice deviceData: SmartThingsDevice) {
+        let id = deviceData.deviceId
+        let name = deviceData.name
+
+        var isOnValue: Bool = false
+        if let switchState = deviceData.state["switch"]?.value as? String {
+            isOnValue = (switchState.lowercased() == "on")
+        }
+
+        // switchType cannot be reliably determined from basic SmartThingsDevice data without more context
+        // or specific capability checks. Defaulting to .generic.
+        // If deviceData.deviceTypeName or capabilities give a hint, that could be used.
+        var determinedSwitchType: SwitchType = .generic
+        // Example: if deviceData.capabilities.contains("fanSpeed") { determinedSwitchType = .fan }
+        // This would require a more extensive mapping.
+
+        self.init(
+            id: id,
+            name: name,
+            room: deviceData.roomId ?? "Unknown",
+            manufacturer: deviceData.manufacturerName ?? "Unknown",
+            model: deviceData.deviceTypeName ?? deviceData.ocf?.fv ?? "Switch",
+            firmwareVersion: deviceData.ocf?.fv ?? "Unknown",
+            isOn: isOnValue,
+            switchType: determinedSwitchType // Defaulting to .generic
+            // lastToggled: nil // Not available from basic fetch
+        )
+    }
+    
     /// Turn the switch on
     /// - Returns: True if state changed successfully
     public func turnOn() -> Bool {

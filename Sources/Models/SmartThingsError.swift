@@ -42,6 +42,8 @@ public enum SmartThingsError: LocalizedError, Hashable {
     
     // New errors
     case commandExecutionFailed(deviceId: String, command: String, reason: String)
+    case commandNotSupported(String)
+    case invalidResponseFormat(String?)
     
     // Add cases used by APIService
     case invalidURL
@@ -95,6 +97,12 @@ public enum SmartThingsError: LocalizedError, Hashable {
             hasher.combine(deviceId)
             hasher.combine(command)
             hasher.combine(reason)
+        case .commandNotSupported(let command):
+            hasher.combine(100)
+            hasher.combine(command)
+        case .invalidResponseFormat(let details):
+            hasher.combine(101)
+            hasher.combine(details)
         case .invalidURL: hasher.combine(25)
         case .decodingError(let error):
             hasher.combine(26)
@@ -137,6 +145,8 @@ public enum SmartThingsError: LocalizedError, Hashable {
         case (.invalidGroupConfiguration, .invalidGroupConfiguration): return true
         case (.commandExecutionFailed(let ld, let lc, let lr), .commandExecutionFailed(let rd, let rc, let rr)):
             return ld == rd && lc == rc && lr == rr
+        case (.commandNotSupported(let l), .commandNotSupported(let r)): return l == r
+        case (.invalidResponseFormat(let l), .invalidResponseFormat(let r)): return l == r
         case (.invalidURL, .invalidURL): return true
         case (.decodingError(let l), .decodingError(let r)): return l.localizedDescription == r.localizedDescription
         case (.encodingError(let l), .encodingError(let r)): return l.localizedDescription == r.localizedDescription
@@ -194,9 +204,13 @@ public enum SmartThingsError: LocalizedError, Hashable {
         case .groupOperationFailed:
             return "Failed to perform group operation"
         case .invalidGroupConfiguration:
-            return "Invalid group configuration"
+            return "Please verify group settings and try again"
         case .commandExecutionFailed(let deviceId, let command, let reason):
             return "Command execution failed: \(reason) (Device: \(deviceId), Command: \(command))"
+        case .commandNotSupported(let command):
+            return "The command '\(command)' is not supported for this device or context."
+        case .invalidResponseFormat(let details):
+            return "The server response was not in the expected format" + (details.map { ": \($0)" } ?? ".")
         case .invalidURL:
             return "The API endpoint URL was invalid."
         case .decodingError(let error):
@@ -205,6 +219,12 @@ public enum SmartThingsError: LocalizedError, Hashable {
             return "Failed to encode request body: \(error.localizedDescription)"
         case .serverError(let statusCode):
             return "API server returned an error: Status Code \(statusCode)"
+        case .commandExecutionFailed:
+            return "Command execution failed. Check device status and command details."
+        case .commandNotSupported:
+            return "Check the device capabilities or the command syntax. This command may not be applicable in the current state."
+        case .invalidResponseFormat:
+            return "This may be a temporary API issue or an unexpected response structure. If persistent, check for API updates or report the issue."
         }
     }
     
@@ -261,6 +281,10 @@ public enum SmartThingsError: LocalizedError, Hashable {
             return "Please contact support - invalid URL configured."
         case .decodingError, .encodingError, .serverError:
             return "An unexpected error occurred. Please try again or contact support."
+        case .commandNotSupported:
+            return "Check the device capabilities or the command syntax. This command may not be applicable in the current state."
+        case .invalidResponseFormat:
+            return "This may be a temporary API issue or an unexpected response structure. If persistent, check for API updates or report the issue."
         }
     }
     
@@ -275,7 +299,7 @@ public enum SmartThingsError: LocalizedError, Hashable {
             return (error as NSError).domain == NSURLErrorDomain
         case .invalidResponse, .webhookRegistrationFailed, .webhookNotFound, .webhookValidationFailed,
              .sceneNotFound, .sceneExecutionFailed, .invalidSceneConfiguration,
-             .groupNotFound, .groupOperationFailed, .invalidGroupConfiguration:
+             .groupNotFound, .groupOperationFailed:
             return false
         case .tokenRefreshFailed:
             return false // Typically requires re-login
@@ -287,6 +311,10 @@ public enum SmartThingsError: LocalizedError, Hashable {
             return false // Likely needs investigation
         case .invalidURL, .decodingError, .encodingError, .serverError:
             return false // Likely needs investigation
+        case .commandNotSupported, .invalidResponseFormat:
+            return false // Generally not client-recoverable by simple retry
+        case .invalidGroupConfiguration:
+            return false
         }
     }
     
@@ -301,6 +329,8 @@ public enum SmartThingsError: LocalizedError, Hashable {
             return 2 // 2 seconds
         case .tokenExpired:
             return 1 // 1 second
+        case .commandNotSupported, .invalidResponseFormat:
+            return 0 // No specific retry recommended
         default:
             return 0 // No retry
         }

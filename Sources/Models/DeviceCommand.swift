@@ -10,6 +10,8 @@ public enum DeviceCommand {
     case setTemperature(Double)
     case setMode(ThermostatMode)
     case setFanMode(ThermostatFanMode)
+    case setHeatingSetpoint(Double)
+    case setCoolingSetpoint(Double)
     
     // Light commands
     case turnOn

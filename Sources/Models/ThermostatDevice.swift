@@ -89,6 +89,99 @@ public class ThermostatDevice: AbstractDevice {
         )
     }
     
+    // REVISED: Convenience initializer for SmartThingsDevice data using documented attributes
+    public convenience init?(fromDevice deviceData: SmartThingsDevice) {
+        // Essential info from SmartThingsDevice itself
+        let id = deviceData.deviceId
+        let name = deviceData.name
+
+        // Parse thermostat-specific states from deviceData.state using documented capability attribute names
+        var currentTemperatureValue: Double? = nil
+        if let tempAnyCodable = deviceData.state["temperature"]?.value {
+            if let tempDouble = tempAnyCodable as? Double {
+                currentTemperatureValue = tempDouble
+            } else if let tempInt = tempAnyCodable as? Int {
+                currentTemperatureValue = Double(tempInt)
+            }
+        }
+
+        // For target temperature, SmartThings might use heatingSetpoint and coolingSetpoint primarily.
+        // thermostatSetpoint can be a general one.
+        // We'll prioritize specific ones if available, then fall back.
+        var targetTemperatureValue: Double? = nil
+        if let heatingSet = deviceData.state["heatingSetpoint"]?.value as? Double {
+            targetTemperatureValue = heatingSet // Could also store coolingSetpoint separately if model supports dual setpoints
+        } else if let coolingSet = deviceData.state["coolingSetpoint"]?.value as? Double {
+            targetTemperatureValue = coolingSet // Or average, or prioritize based on mode
+        } else if let generalSet = deviceData.state["thermostatSetpoint"]?.value as? Double {
+            targetTemperatureValue = generalSet
+        } else if let heatingSetInt = deviceData.state["heatingSetpoint"]?.value as? Int {
+            targetTemperatureValue = Double(heatingSetInt)
+        } else if let coolingSetInt = deviceData.state["coolingSetpoint"]?.value as? Int {
+            targetTemperatureValue = Double(coolingSetInt)
+        } else if let generalSetInt = deviceData.state["thermostatSetpoint"]?.value as? Int {
+            targetTemperatureValue = Double(generalSetInt)
+        }
+
+        var modeValue: ThermostatMode = .off // Default to off
+        if let modeString = deviceData.state["thermostatMode"]?.value as? String,
+           let parsedMode = ThermostatMode(rawValue: modeString.uppercased()) {
+            modeValue = parsedMode
+        } else {
+            // If thermostatMode is critical and missing/unparseable, consider returning nil
+            // For now, we default to .off. If .off isn't a universally safe default, 
+            // and a thermostat *must* have a mode, then: guard let modeString = ... else { return nil }
+        }
+
+        var fanModeValue: ThermostatFanMode = .auto // Default to auto
+        if let fanModeString = deviceData.state["thermostatFanMode"]?.value as? String,
+           let parsedFanMode = ThermostatFanMode(rawValue: fanModeString.uppercased()) {
+            fanModeValue = parsedFanMode
+        }
+        
+        var humidityValue: Double? = nil
+        if let humidityAnyCodable = deviceData.state["humidity"]?.value { // From Relative Humidity Measurement
+            if let humDouble = humidityAnyCodable as? Double {
+                humidityValue = humDouble
+            } else if let humInt = humidityAnyCodable as? Int {
+                humidityValue = Double(humInt)
+            }
+        }
+
+        var isHeatingValue: Bool = false
+        var isCoolingValue: Bool = false
+        if let opStateString = deviceData.state["thermostatOperatingState"]?.value as? String {
+            let opStateLower = opStateString.lowercased()
+            isHeatingValue = (opStateLower == "heating" || opStateLower == "pending heat")
+            isCoolingValue = (opStateLower == "cooling" || opStateLower == "pending cool")
+        }
+        
+        var isFanRunningValue: Bool = false
+        if let fanOpStateString = deviceData.state["thermostatOperatingState"]?.value as? String {
+             isFanRunningValue = (fanOpStateString.lowercased() == "fan only")
+        } else if fanModeValue != .auto { // If explicit fan mode is on/circulate, assume fan is running
+            isFanRunningValue = true
+        }
+
+        self.init(
+            id: id,
+            name: name,
+            room: deviceData.roomId ?? "Unknown",
+            manufacturer: deviceData.manufacturerName ?? "Unknown",
+            model: deviceData.deviceTypeName ?? deviceData.ocf?.fv ?? "Thermostat", // Prefer deviceTypeName
+            firmwareVersion: deviceData.ocf?.fv ?? "Unknown",
+            currentTemperature: currentTemperatureValue,
+            targetTemperature: targetTemperatureValue,
+            mode: modeValue,
+            humidity: humidityValue,
+            isHeating: isHeatingValue,
+            isCooling: isCoolingValue,
+            isFanRunning: isFanRunningValue,
+            fanMode: fanModeValue
+            // temperatureRange would ideally come from capabilities or device presentation info
+        )
+    }
+    
     /// Set a new target temperature
     /// - Parameter temperature: The desired temperature
     /// - Returns: True if the temperature was set successfully

@@ -1,0 +1,410 @@
+/// Base implementation of AbstractDevice with common properties
+public class BaseDevice: AbstractDevice, Codable {
+    public let id: String
+    public let name: String
+    // ... other properties ...
+    public let attributes: [String: AnyCodable]?
+
+    // Coding Keys for BaseDevice
+    private enum CodingKeys: String, CodingKey {
+        case id, name, manufacturerName, modelName, deviceTypeName, capabilities, components, status, healthState, attributes
+    }
+
+    public init(
+        // ... existing parameters ...
+    ) {
+        // ... existing init code ...
+    }
+
+    // Decodable Initializer - Make required public
+    required public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        manufacturerName = try container.decodeIfPresent(String.self, forKey: .manufacturerName)
+        modelName = try container.decodeIfPresent(String.self, forKey: .modelName)
+        deviceTypeName = try container.decodeIfPresent(String.self, forKey: .deviceTypeName)
+        capabilities = try container.decodeIfPresent([SmartThingsCapability].self, forKey: .capabilities)
+        components = try container.decodeIfPresent([String].self, forKey: .components)
+        status = try container.decodeIfPresent(String.self, forKey: .status)
+        healthState = try container.decodeIfPresent(String.self, forKey: .healthState)
+        attributes = try container.decodeIfPresent([String: AnyCodable].self, forKey: .attributes)
+    }
+
+    // Encodable Function - Make public (not override)
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(name, forKey: .name)
+        try container.encodeIfPresent(manufacturerName, forKey: .manufacturerName)
+        try container.encodeIfPresent(modelName, forKey: .modelName)
+        try container.encodeIfPresent(deviceTypeName, forKey: .deviceTypeName)
+        try container.encodeIfPresent(capabilities, forKey: .capabilities)
+        try container.encodeIfPresent(components, forKey: .components)
+        try container.encodeIfPresent(status, forKey: .status)
+        try container.encodeIfPresent(healthState, forKey: .healthState)
+        try container.encodeIfPresent(attributes, forKey: .attributes)
+    }
+
+    /// Creates a copy of the current device - Make public (not override)
+    public func copy() -> BaseDevice {
+        return BaseDevice(
+            // ... existing copy code ...
+        )
+    }
+}
+
+// ... existing DeviceType enum ...
+
+
+/// A smart lock device that can be locked and unlocked
+public class LockDevice: BaseDevice { // Inherit BaseDevice
+    // MARK: - Properties
+    
+    /// Current state of the lock
+    public var currentState: LockState
+    
+    /// Battery level percentage 0-100
+    public var batteryLevel: Int?
+    
+    /// Timestamp of the last state change
+    public var lastStateChange: Date?
+    
+    /// Whether remote operation is enabled
+    public var isRemoteOperationEnabled: Bool
+    
+    /// History of lock/unlock events
+    public var accessHistory: [LockAccessRecord]
+
+    // MARK: - Initialization
+    
+    public init(
+        id: String,
+        name: String,
+        manufacturerName: String? = nil,
+        modelName: String? = nil,
+        deviceTypeName: String? = nil,
+        capabilities: [SmartThingsCapability]? = nil,
+        components: [String]? = nil,
+        status: String? = nil,
+        healthState: String? = nil,
+        attributes: [String: AnyCodable]? = nil,
+        // Lock-specific properties
+        currentState: LockState = .unknown,
+        batteryLevel: Int? = nil,
+        lastStateChange: Date? = nil,
+        isRemoteOperationEnabled: Bool = true,
+        accessHistory: [LockAccessRecord] = []
+    ) {
+        self.currentState = currentState
+        self.batteryLevel = batteryLevel
+        self.lastStateChange = lastStateChange
+        self.isRemoteOperationEnabled = isRemoteOperationEnabled
+        self.accessHistory = accessHistory
+        
+        // Call super.init for BaseDevice properties
+        super.init(
+            id: id, name: name, manufacturerName: manufacturerName, modelName: modelName,
+            deviceTypeName: deviceTypeName ?? "Lock", // Default type name
+            capabilities: capabilities, components: components, status: status,
+            healthState: healthState, attributes: attributes
+        )
+    }
+    
+    // MARK: - Copying
+    
+    /// Creates a copy of this device (Override, return concrete type)
+    override public func copy() -> LockDevice {
+        return LockDevice(
+            id: self.id, name: self.name, manufacturerName: self.manufacturerName,
+            modelName: self.modelName, deviceTypeName: self.deviceTypeName,
+            capabilities: self.capabilities, components: self.components, status: self.status,
+            healthState: self.healthState, attributes: self.attributes,
+            // Pass lock-specific properties
+            currentState: self.currentState, batteryLevel: self.batteryLevel,
+            lastStateChange: self.lastStateChange, isRemoteOperationEnabled: self.isRemoteOperationEnabled,
+            accessHistory: self.accessHistory
+        )
+    }
+    
+    // MARK: - Codable
+    
+    private enum CodingKeys: String, CodingKey {
+        case currentState, batteryLevel, lastStateChange, isRemoteOperationEnabled, accessHistory
+    }
+    
+    // Required initializer for Decodable conformance - Remove override
+    required public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        // Decode lock-specific properties
+        self.currentState = try container.decode(LockState.self, forKey: .currentState)
+        self.batteryLevel = try container.decodeIfPresent(Int.self, forKey: .batteryLevel)
+        self.lastStateChange = try container.decodeIfPresent(Date.self, forKey: .lastStateChange)
+        self.isRemoteOperationEnabled = try container.decode(Bool.self, forKey: .isRemoteOperationEnabled)
+        self.accessHistory = try container.decode([LockAccessRecord].self, forKey: .accessHistory)
+        
+        // Initialize BaseDevice properties
+        try super.init(from: decoder)
+    }
+    
+    // Encodable Function - Add override
+    override public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        // Encode lock-specific properties
+        try container.encode(currentState, forKey: .currentState)
+        try container.encodeIfPresent(batteryLevel, forKey: .batteryLevel)
+        try container.encodeIfPresent(lastStateChange, forKey: .lastStateChange)
+        try container.encode(isRemoteOperationEnabled, forKey: .isRemoteOperationEnabled)
+        try container.encode(accessHistory, forKey: .accessHistory)
+        
+        // Encode BaseDevice properties
+        try super.encode(to: encoder)
+    }
+
+    // ... existing methods like updateLockState, canUserOperate ...
+    // Ensure these methods now correctly use inherited properties like self.status, self.id
+    
+    func updateLockState(to state: LockState, initiatedBy userId: String) -> DeviceState {
+            self.currentState = state
+            self.lastStateChange = Date()
+            
+            // Log access record
+            let record = LockAccessRecord(
+                timestamp: Date(),
+                operation: state == .locked ? .lock : .unlock,
+                userId: userId,
+                success: true
+            )
+            self.accessHistory.append(record)
+            
+            // Construct DeviceState using inherited properties
+            var attributes = self.attributes ?? [:]
+            attributes["lockState"] = AnyCodable(state.rawValue)
+            
+            // Use self.status from BaseDevice
+            return DeviceState(isOnline: self.status == "ONLINE", attributes: attributes)
+        }
+
+    func canUserOperate(user: User) -> Bool {
+            switch user.role {
+            case .admin, .propertyManager:
+                return true // Admins/Managers can operate any lock
+            case .tenant:
+                // Tenants can only control locks in their assigned units/properties
+                // Use inherited properties 'id', 'manufacturerName', 'propertyId' etc. if needed.
+                // The exact logic depends on the User model structure.
+                // Example (assuming User has properties/rooms):
+                // return user.isAssignedToProperty(self.propertyId) && user.canAccessRoom(self.roomId)
+                // For now, let's assume a simpler check based on propertyId if available
+                 guard let propId = self.manufacturerName /* Placeholder, use actual propertyId */ else { return false }
+                 return user.properties.contains(propId) // Adjust based on actual User model
+            case .guest:
+                // Guests might have temporary access based on GuestAccess model
+                guard let guestAccess = user.guestAccess else { return false }
+                let now = Date()
+                // Use self.id (which is String)
+                return guestAccess.validFrom <= now && now <= guestAccess.validUntil &&
+                       guestAccess.deviceIds.contains(self.id)
+            }
+        }
+}
+
+
+/// A smart light device that can be controlled
+public class LightDevice: BaseDevice { // Inherit BaseDevice
+    // MARK: - Properties
+    
+    /// Whether the light is currently on
+    public var isOn: Bool
+    
+    /// Brightness level (0-100, if supported)
+    public var brightness: Int?
+    
+    /// Current color settings (if the light supports color)
+    public var color: LightColor? // Using LightColor from DeviceTypes.swift
+    
+    /// Whether the light supports dimming
+    public let supportsDimming: Bool
+    
+    /// Whether the light supports color control
+    public let supportsColor: Bool
+    
+    /// Whether the light supports color temperature control
+    public let supportsTemperature: Bool
+    
+    /// Current color temperature in Kelvin (if supported)
+    public var colorTemperature: Int?
+    
+    /// Minimum color temperature supported
+    public let minColorTemperature: Int?
+    
+    /// Maximum color temperature supported
+    public let maxColorTemperature: Int?
+
+    // MARK: - Initialization
+    
+    public init(
+        id: String, name: String, manufacturerName: String? = nil, modelName: String? = nil,
+        deviceTypeName: String? = nil, capabilities: [SmartThingsCapability]? = nil, components: [String]? = nil,
+        status: String? = nil, healthState: String? = nil, attributes: [String: AnyCodable]? = nil,
+        // Light-specific properties
+        isOn: Bool = false, brightness: Int? = nil, color: LightColor? = nil,
+        supportsDimming: Bool = false, supportsColor: Bool = false, supportsTemperature: Bool = false,
+        colorTemperature: Int? = nil, minColorTemperature: Int? = nil, maxColorTemperature: Int? = nil
+    ) {
+        self.isOn = isOn
+        self.brightness = brightness
+        self.color = color
+        self.supportsDimming = supportsDimming
+        self.supportsColor = supportsColor
+        self.supportsTemperature = supportsTemperature
+        self.colorTemperature = colorTemperature
+        self.minColorTemperature = minColorTemperature
+        self.maxColorTemperature = maxColorTemperature
+        
+        // Call super.init for BaseDevice properties
+        super.init(
+            id: id, name: name, manufacturerName: manufacturerName, modelName: modelName,
+            deviceTypeName: deviceTypeName ?? "Light", // Default type name
+            capabilities: capabilities, components: components, status: status,
+            healthState: healthState, attributes: attributes
+        )
+    }
+    
+    // MARK: - Copying
+    
+    /// Creates a copy of this device (Override, return concrete type)
+    override public func copy() -> LightDevice {
+        return LightDevice(
+            id: self.id, name: self.name, manufacturerName: self.manufacturerName,
+            modelName: self.modelName, deviceTypeName: self.deviceTypeName,
+            capabilities: self.capabilities, components: self.components, status: self.status,
+            healthState: self.healthState, attributes: self.attributes,
+            // Pass light-specific properties
+            isOn: self.isOn, brightness: self.brightness, color: self.color,
+            supportsDimming: self.supportsDimming, supportsColor: self.supportsColor,
+            supportsTemperature: self.supportsTemperature, colorTemperature: self.colorTemperature,
+            minColorTemperature: self.minColorTemperature, maxColorTemperature: self.maxColorTemperature
+        )
+    }
+    
+    // MARK: - Codable
+    
+    private enum CodingKeys: String, CodingKey {
+        case isOn, brightness, color, supportsDimming, supportsColor, supportsTemperature,
+             colorTemperature, minColorTemperature, maxColorTemperature
+    }
+    
+    // Required initializer for Decodable conformance - Remove override
+    required public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        // Decode light-specific properties
+        self.isOn = try container.decode(Bool.self, forKey: .isOn)
+        self.brightness = try container.decodeIfPresent(Int.self, forKey: .brightness)
+        self.color = try container.decodeIfPresent(LightColor.self, forKey: .color)
+        self.supportsDimming = try container.decode(Bool.self, forKey: .supportsDimming)
+        self.supportsColor = try container.decode(Bool.self, forKey: .supportsColor)
+        self.supportsTemperature = try container.decode(Bool.self, forKey: .supportsTemperature)
+        self.colorTemperature = try container.decodeIfPresent(Int.self, forKey: .colorTemperature)
+        self.minColorTemperature = try container.decodeIfPresent(Int.self, forKey: .minColorTemperature)
+        self.maxColorTemperature = try container.decodeIfPresent(Int.self, forKey: .maxColorTemperature)
+        
+        // Initialize BaseDevice properties
+        try super.init(from: decoder)
+    }
+    
+    // Encodable Function - Add override
+    override public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        // Encode light-specific properties
+        try container.encode(isOn, forKey: .isOn)
+        try container.encodeIfPresent(brightness, forKey: .brightness)
+        try container.encodeIfPresent(color, forKey: .color)
+        try container.encode(supportsDimming, forKey: .supportsDimming)
+        try container.encode(supportsColor, forKey: .supportsColor)
+        try container.encode(supportsTemperature, forKey: .supportsTemperature)
+        try container.encodeIfPresent(colorTemperature, forKey: .colorTemperature)
+        try container.encodeIfPresent(minColorTemperature, forKey: .minColorTemperature)
+        try container.encodeIfPresent(maxColorTemperature, forKey: .maxColorTemperature)
+        
+        // Encode BaseDevice properties
+        try super.encode(to: encoder)
+    }
+}
+
+
+/// Represents a generic device that doesn't fit into specific device categories
+public class GenericDevice: BaseDevice { // Inherit BaseDevice
+    // MARK: - Properties
+    
+    /// Capabilities supported by this device (as strings)
+    public var deviceCapabilities: [String]
+    
+    /// Custom attributes specific to this device type (raw dictionary)
+    public var attributes: [String: AnyCodable] // Use AnyCodable if possible
+
+    // MARK: - Initialization
+    
+    public init(
+        id: String, name: String, manufacturerName: String? = nil, modelName: String? = nil,
+        deviceTypeName: String? = nil, capabilities: [SmartThingsCapability]? = nil, components: [String]? = nil,
+        status: String? = nil, healthState: String? = nil, baseAttributes: [String: AnyCodable]? = nil, // Renamed to avoid conflict
+        // Generic-specific properties
+        deviceCapabilities: [String] = [],
+        attributes: [String: AnyCodable] = [:] // Use AnyCodable
+    ) {
+        self.deviceCapabilities = deviceCapabilities
+        self.attributes = attributes // Assign specific attributes
+        
+        // Call super.init for BaseDevice properties
+        super.init(
+            id: id, name: name, manufacturerName: manufacturerName, modelName: modelName,
+            deviceTypeName: deviceTypeName ?? "Generic", // Default type name
+            capabilities: capabilities, components: components, status: status,
+            healthState: healthState, attributes: baseAttributes // Pass base attributes
+        )
+    }
+
+    // MARK: - Copying
+    
+    /// Creates a copy of this device (Override, return concrete type)
+    override public func copy() -> GenericDevice {
+        return GenericDevice(
+            id: self.id, name: self.name, manufacturerName: self.manufacturerName,
+            modelName: self.modelName, deviceTypeName: self.deviceTypeName,
+            capabilities: self.capabilities, components: self.components, status: self.status,
+            healthState: self.healthState, baseAttributes: super.attributes, // Pass BaseDevice attributes
+            // Pass generic-specific properties
+            deviceCapabilities: self.deviceCapabilities,
+            attributes: self.attributes
+        )
+    }
+
+    // MARK: - Codable
+    
+    private enum CodingKeys: String, CodingKey {
+        case deviceCapabilities, attributes // Specific attributes
+    }
+    
+    // Required initializer for Decodable conformance - Remove override
+    required public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        // Decode generic-specific properties
+        self.deviceCapabilities = try container.decode([String].self, forKey: .deviceCapabilities)
+        self.attributes = try container.decode([String: AnyCodable].self, forKey: .attributes)
+        
+        // Initialize BaseDevice properties
+        try super.init(from: decoder)
+    }
+    
+    // Encodable Function - Add override
+    override public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        // Encode generic-specific properties
+        try container.encode(deviceCapabilities, forKey: .deviceCapabilities)
+        try container.encode(attributes, forKey: .attributes)
+        
+        // Encode BaseDevice properties
+        try super.encode(to: encoder)
+    }
+} 
