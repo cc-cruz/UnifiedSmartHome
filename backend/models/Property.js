@@ -28,39 +28,39 @@ const AddressSchema = new Schema({
     trim: true,
     default: 'USA'
   }
-});
+}, {_id: false});
 
 const PropertySchema = new Schema({
   name: {
     type: String,
     required: true,
-    trim: true
+    trim: true,
+    index: true
+  },
+  portfolioId: {
+    type: Schema.Types.ObjectId,
+    ref: 'Portfolio',
+    required: true,
+    index: true
   },
   address: {
     type: AddressSchema,
     required: true
   },
-  owner: {
+  unitIds: [{
+    type: Schema.Types.ObjectId,
+    ref: 'Unit',
+    index: true
+  }],
+  managerUserIds: [{
     type: Schema.Types.ObjectId,
     ref: 'User',
-    required: true
+    index: true
+  }],
+  defaultTimeZone: {
+    type: String,
+    required: false
   },
-  managers: [{
-    type: Schema.Types.ObjectId,
-    ref: 'User'
-  }],
-  tenants: [{
-    type: Schema.Types.ObjectId,
-    ref: 'User'
-  }],
-  rooms: [{
-    type: Schema.Types.ObjectId,
-    ref: 'Room'
-  }],
-  devices: [{
-    type: Schema.Types.ObjectId,
-    ref: 'Device'
-  }],
   createdAt: {
     type: Date,
     default: Date.now
@@ -69,6 +69,11 @@ const PropertySchema = new Schema({
     type: Date,
     default: Date.now
   }
+});
+
+PropertySchema.pre('save', function(next) {
+    this.updatedAt = Date.now();
+    next();
 });
 
 module.exports = mongoose.model('Property', PropertySchema); 

@@ -22,6 +22,9 @@ public class UserManager: ObservableObject {
     private let keychainHelper: Helpers.KeychainHelper
     private var cancellables = Set<AnyCancellable>()
     
+    // New: Cache for property data
+    private var properties: [Property] = []
+    
     // Singleton instance
     static let shared = UserManager()
     
@@ -31,6 +34,29 @@ public class UserManager: ObservableObject {
         
         // Check for existing token on initialization
         checkToken()
+    }
+    
+    // New: Method to set/update the properties cache
+    // This would typically be called after fetching properties from a backend.
+    public func setProperties(_ properties: [Property]) {
+        // In a more complex app, consider thread safety if properties can be updated from multiple threads.
+        // For now, a simple assignment.
+        self.properties = properties
+        print("UserManager: Properties cache updated with \(properties.count) items.")
+    }
+    
+    // New: Method to get portfolioId for a given propertyId
+    public func getPortfolioIdForProperty(propertyId: String) -> String? {
+        // Search the cached properties.
+        // In a performant system with many properties, a dictionary lookup (propertiesById[propertyId]) would be faster.
+        // For now, a simple iteration is fine.
+        let foundProperty = properties.first { $0.id == propertyId }
+        if let property = foundProperty {
+            return property.portfolioId
+        } else {
+            print("UserManager: Property with ID \(propertyId) not found in cache. Cannot determine portfolioId.")
+            return nil
+        }
     }
     
     // MARK: - Authentication Methods

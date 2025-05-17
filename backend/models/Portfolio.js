@@ -1,25 +1,21 @@
 const mongoose = require('mongoose');
 const Schema = mongoose.Schema;
 
-const RoomSchema = new Schema({
+const PortfolioSchema = new Schema({
   name: {
     type: String,
     required: true,
     trim: true
   },
-  type: {
-    type: String,
-    enum: ['LIVING_ROOM', 'BEDROOM', 'KITCHEN', 'BATHROOM', 'OFFICE', 'GARAGE', 'OTHER'],
-    required: true
-  },
-  property: {
+  administratorUserIds: [{
+    type: Schema.Types.ObjectId,
+    ref: 'User',
+    index: true
+  }],
+  propertyIds: [{
     type: Schema.Types.ObjectId,
     ref: 'Property',
-    required: true
-  },
-  devices: [{
-    type: Schema.Types.ObjectId,
-    ref: 'Device'
+    index: true
   }],
   createdAt: {
     type: Date,
@@ -31,4 +27,4 @@ const RoomSchema = new Schema({
   }
 });
 
-module.exports = mongoose.model('Room', RoomSchema); 
+module.exports = mongoose.model('Portfolio', PortfolioSchema); 

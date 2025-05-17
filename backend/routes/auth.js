@@ -1,6 +1,14 @@
 const express = require('express');
 const router = express.Router();
 const User = require('../models/User');
+const jwt = require('jsonwebtoken');
+require('dotenv').config();
+
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+    console.error("FATAL ERROR: JWT_SECRET is not defined in .env file.");
+    process.exit(1);
+}
 
 // @route   POST /api/auth/register
 // @desc    Register a new user
@@ -8,8 +16,11 @@ const User = require('../models/User');
 router.post('/register', async (req, res, next) => {
   try {
     const { firstName, lastName, email, password } = req.body;
+
+    if (!firstName || !lastName || !email || !password) {
+        return res.status(400).json({ success: false, message: 'Please provide firstName, lastName, email, and password.'});
+    }
     
-    // Check if user already exists
     const existingUser = await User.findOne({ email });
     if (existingUser) {
       return res.status(400).json({
@@ -18,28 +29,30 @@ router.post('/register', async (req, res, next) => {
       });
     }
     
-    // Create new user
-    // In a real implementation, you would hash the password before saving
+    // Password will be hashed by the pre-save hook in User model
     const user = new User({
       firstName,
       lastName,
       email,
-      password, // This should be hashed in production
-      role: 'TENANT' // Default role
+      password, 
     });
     
     await user.save();
     
-    // Generate JWT token
-    // In a real implementation, you would use JWT
-    const token = 'dummy_token';
+    const payload = {
+        user: {
+            id: user.id
+        }
+    };
+    const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '1h' });
     
     res.status(201).json({
       success: true,
-      user,
+      user: user.toJSON(), // Use toJSON() to strip password
       token
     });
   } catch (error) {
+    console.error('Registration error:', error); // Log the actual error
     next(error);
   }
 });
@@ -50,9 +63,13 @@ router.post('/register', async (req, res, next) => {
 router.post('/login', async (req, res, next) => {
   try {
     const { email, password } = req.body;
+
+    if (!email || !password) {
+        return res.status(400).json({ success: false, message: 'Please provide email and password.'});
+    }
     
-    // Find user by email
-    const user = await User.findOne({ email });
+    // Need to explicitly select password as it's select: false in schema
+    const user = await User.findOne({ email }).select('+password +isSuperAdmin'); 
     if (!user) {
       return res.status(404).json({
         success: false,
@@ -60,25 +77,28 @@ router.post('/login', async (req, res, next) => {
       });
     }
     
-    // Check password
-    // In a real implementation, you would compare hashed passwords
-    if (user.password !== password) {
+    const isMatch = await user.comparePassword(password);
+    if (!isMatch) { 
       return res.status(401).json({
         success: false,
         message: 'Invalid credentials'
       });
     }
     
-    // Generate JWT token
-    // In a real implementation, you would use JWT
-    const token = 'dummy_token';
+    const payload = {
+        user: {
+            id: user.id
+        }
+    };
+    const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '1h' });
     
     res.status(200).json({
       success: true,
-      user,
+      user: user.toJSON(), // Use toJSON() to strip password
       token
     });
   } catch (error) {
+    console.error('Login error:', error); // Log the actual error
     next(error);
   }
 });

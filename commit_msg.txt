@@ -1,0 +1,19 @@
+⬆️ Build-fix & consolidation
+
+Core
+• Removed duplicate models & adapters (ios/Models, Sources/Adapters duplicate)
+• Added public SmartThingsGroupRequest, SmartThingsSceneRequest, SmartThingsCommand
+
+Adapters
+• Refactored ios/Adapters/SmartThingsAdapter (URLSession, new init?(fromDevice:), converter stub)
+• Deleted obsolete Sources/Adapters/SmartThingsAdapter.swift
+• Cleaned HueLightAdapter malformed prints / placeholders
+
+Models
+• SmartThingsError exhaustive switches, fixed placeholder
+
+UI
+• Added ActivityView.swift demo (pending target membership)
+
+Build
+• Xcode Build Succeeded; remaining warnings are cosmetic

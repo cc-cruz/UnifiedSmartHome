@@ -8,6 +8,7 @@ class DeviceService: DeviceManagerProtocol {
 
     // Private storage for the injected adapters
     private let adapters: [SmartDeviceAdapter]
+    private let userManager: UserManager // Added UserManager dependency
     
     // Logger (Optional but good practice)
     // private let logger: YourLoggerProtocol // Assuming a logging system exists
@@ -15,20 +16,21 @@ class DeviceService: DeviceManagerProtocol {
     // Dependency Injection via initializer
     // Removed singleton pattern
     // Inject adapters and any other dependencies (like a logger)
-    init(adapters: [SmartDeviceAdapter]) { // logger: YourLoggerProtocol) {
+    init(adapters: [SmartDeviceAdapter], userManager: UserManager) { // logger: YourLoggerProtocol, userManager: UserManager) {
         self.adapters = adapters
+        self.userManager = userManager // Store injected UserManager
         // self.logger = logger
-        print("DeviceService initialized with \\(adapters.count) adapters.")
+        print("DeviceService initialized with \\(adapters.count) adapters and UserManager.")
     }
 
     // MARK: - Core DeviceManagerProtocol Implementation (Adapter-Based)
 
-    // Fetch devices from all configured adapters concurrently
+    // Fetch devices from all configured adapters concurrently and filter by user permissions
     func getAllDevices() async throws -> [AbstractDevice] {
         print("DeviceService: Fetching devices from all adapters...")
         
         // Use a TaskGroup to fetch from all adapters concurrently
-        let allDevices = await withTaskGroup(of: Result<[AbstractDevice], Error>.self, returning: [AbstractDevice].self) { group in
+        let allDevicesFromAdapters = await withTaskGroup(of: Result<[AbstractDevice], Error>.self, returning: [AbstractDevice].self) { group in
             
             for adapter in adapters {
                 group.addTask {
@@ -53,7 +55,7 @@ class DeviceService: DeviceManagerProtocol {
                 case .failure(let error):
                     // Decide how to handle partial failures.
                     // Option 1: Log and continue (returning partial results) - Chosen here
-                     print("Warning: Adapter failed during fetch, returning partial results. Error: \\(error.localizedDescription)")
+                     print("Warning: Adapter failed during fetch, processing partial results. Error: \\(error.localizedDescription)")
                     // Option 2: Rethrow the first error encountered
                     // throw error
                     // Option 3: Collect all errors and throw an aggregate error
@@ -62,10 +64,54 @@ class DeviceService: DeviceManagerProtocol {
             return combinedDevices
         }
         
-        print("DeviceService: Fetched a total of \\(allDevices.count) devices.")
-        // TODO: Consider caching results if appropriate (Sprint 5)
-        // TODO: Consider filtering based on user permissions (Sprint 3)
-        return allDevices
+        print("DeviceService: Fetched a total of \\(allDevicesFromAdapters.count) devices from adapters.")
+
+        // Filter devices based on user permissions
+        guard let currentUser = userManager.currentUser else {
+            print("DeviceService: No current user found. Returning empty list.")
+            return [] // Or throw an authentication error
+        }
+
+        let filteredDevices = allDevicesFromAdapters.filter { device in
+            let devicePropertyId: String?
+            let deviceUnitId: String?
+
+            if let lockDevice = device as? LockDevice {
+                devicePropertyId = lockDevice.propertyId
+                deviceUnitId = lockDevice.unitId
+            } else if let switchDevice = device as? SwitchDevice { // Assuming SwitchDevice also gets these properties
+                devicePropertyId = switchDevice.propertyId
+                deviceUnitId = switchDevice.unitId
+            } else if let thermostatDevice = device as? ThermostatDevice { // Assuming ThermostatDevice also gets these
+                devicePropertyId = thermostatDevice.propertyId
+                deviceUnitId = thermostatDevice.unitId
+            } else if let lightDevice = device as? LightDevice { // Assuming LightDevice also gets these
+                devicePropertyId = lightDevice.propertyId
+                deviceUnitId = lightDevice.unitId
+            } else {
+                devicePropertyId = device.metadata["propertyId"]
+                deviceUnitId = device.metadata["unitId"]
+            }
+            
+            // NEW: Determine devicePortfolioId
+            var devicePortfolioId: String? = nil
+            if let propId = devicePropertyId {
+                // This method needs to be added to UserManager or a relevant service.
+                // It's responsible for mapping a propertyId to its parent portfolioId.
+                // For this example, we assume userManager can provide this. This might be async in a real scenario.
+                devicePortfolioId = userManager.getPortfolioIdForProperty(propertyId: propId)
+            }
+            
+            return currentUser.canAccessDevice(
+                propertyId: devicePropertyId, 
+                unitId: deviceUnitId, 
+                deviceId: device.id, 
+                devicePortfolioId: devicePortfolioId // Pass the looked-up portfolio ID
+            )
+        }
+
+        print("DeviceService: Filtered devices count: \\(filteredDevices.count)")
+        return filteredDevices
     }
 
     // Get the state of a specific device by querying adapters
@@ -73,38 +119,48 @@ class DeviceService: DeviceManagerProtocol {
          print("DeviceService: Getting state for device ID \\(id)...")
         
         var lastError: Error? = nil
+        var foundDevice: AbstractDevice? = nil
         
         for adapter in adapters {
             do {
-                // logger.debug("Querying adapter \\(type(of: adapter)) for device state: \\(id)")
                 let device = try await adapter.getDeviceState(deviceId: id)
-                // logger.info("Found state for device \\(id) via adapter: \\(type(of: adapter))")
-                return device
+                foundDevice = device // Store device temporarily to get its portfolio ID
+                break // Found device, exit adapter loop
             } catch let error as SmartDeviceError where error == .deviceNotFound(id) {
-                // This adapter doesn't have the device, try the next one
-                // logger.debug("Device \\(id) not found by adapter: \\(type(of: adapter))")
-                lastError = error // Keep track of the 'not found' error
+                lastError = error 
                 continue
             } catch let error as SmartDeviceError where isNotFoundError(error) {
-                 // Handle other potential "not found" style errors from adapters
                  lastError = error
                  continue
              } catch {
-                // A different error occurred (e.g., network, API error from this adapter)
-                // logger.error("Error getting state for device \\(id) from adapter \\(type(of: adapter)): \\(error)")
-                 print("Error getting state for \\(id) from adapter \\(type(of: adapter)): \\(error.localizedDescription)")
-                lastError = error // Record the error
-                // Option: Re-throw immediately if a non-'not found' error occurs?
-                // throw error
+                 lastError = error 
             }
         }
         
-        // If we looped through all adapters and didn't find it or encountered errors
-        // logger.warning("Device \\(id) not found by any adapter.")
-        throw lastError ?? DeviceServiceError.deviceNotFound // Throw last error, default to NotFound
+        guard let device = foundDevice else {
+            throw lastError ?? DeviceServiceError.deviceNotFound
+        }
+
+        // After fetching, verify if the current user should see this device
+        if let currentUser = userManager.currentUser {
+            let devicePropertyId: String? = (device as? LockDevice)?.propertyId ?? device.metadata["propertyId"]
+            let deviceUnitId: String? = (device as? LockDevice)?.unitId ?? device.metadata["unitId"]
+            var devicePortfolioId: String? = nil
+            if let propId = devicePropertyId {
+                devicePortfolioId = userManager.getPortfolioIdForProperty(propertyId: propId)
+            }
+
+            if !currentUser.canAccessDevice(propertyId: devicePropertyId, unitId: deviceUnitId, deviceId: device.id, devicePortfolioId: devicePortfolioId) {
+                print("DeviceService: User \\(currentUser.id) not authorized for device \\(id) after fetch.")
+                throw DeviceServiceError.unauthorizedAccess
+            }
+        }
+        return device
     }
 
     // Execute a command by delegating to the appropriate adapter
+    // Permissions for command execution are handled by SecurityService -> LockDAL -> LockDevice.canPerformRemoteOperation
+    // So, no explicit permission check needed here again, assuming SecurityService is called first.
     func executeCommand(deviceId: String, command: DeviceCommand) async throws -> AbstractDevice {
         print("DeviceService: Executing command \\(command) for device ID \\(deviceId)...")
         
@@ -153,61 +209,55 @@ class DeviceService: DeviceManagerProtocol {
     // MARK: - DeviceManagerProtocol Methods Using SmartDevice (Stubs)
 
     func getDevice(id: String) async throws -> SmartDevice? {
-        print("STUB: DeviceService.getDevice(id:) called - Implementation needed.")
+        print("STUB: DeviceService.getDevice(id:) called - Requires multi-tenancy review.")
         // TODO: Implement logic to find the correct adapter and call its getDeviceState,
         //       then attempt to cast/convert the result to SmartDevice? or fetch specific SmartDevice data.
         //       For now, returning nil or re-throwing getDeviceState error after casting might work.
-        fatalError("Not implemented")
+        fatalError("Not implemented. Requires multi-tenancy review.")
     }
 
     func fetchDevice(id: String) async throws -> SmartDevice? {
-        print("STUB: DeviceService.fetchDevice(id:) called - Implementation needed.")
+        print("STUB: DeviceService.fetchDevice(id:) called - Requires multi-tenancy review.")
         // TODO: Implement logic, potentially similar to getDevice, but maybe focused on fetching
         //       fresh data from the source API via an adapter.
-        fatalError("Not implemented")
+        fatalError("Not implemented. Requires multi-tenancy review.")
     }
 
     func addDevice(_ device: SmartDevice) async throws {
-        print("STUB: DeviceService.addDevice(SmartDevice) called - Implementation needed.")
+        print("STUB: DeviceService.addDevice(SmartDevice) called - Device onboarding needs multi-tenancy design.")
         // TODO: Logic likely involves finding the responsible adapter and potentially
         //       calling an adapter-specific registration or update method.
         //       Manual addition is complex; often handled by adapter discovery.
-        fatalError("Not implemented")
+        fatalError("Not implemented. Device onboarding needs multi-tenancy design.")
     }
 
     // Note: removeDevice(id:) signature matches both AbstractDevice and SmartDevice uses in the protocol.
     // The existing warning/throw implementation might suffice if manual removal isn't supported.
     // If specific SmartDevice removal logic is needed, this needs adjusting.
     func removeDevice(id: String) async throws {
-        print("WARN: DeviceService.removeDevice called - Device removal usually handled by vendor platforms.")
-        throw DeviceServiceError.operationNotSupported("Manual device removal")
+        print("WARN: DeviceService.removeDevice called - Requires multi-tenancy review and design.")
+        throw DeviceServiceError.operationNotSupported("Manual device removal - multi-tenancy review needed")
     }
 
     func updateLockState(deviceId: String, newState: LockDevice.LockState) async throws {
-        print("STUB: DeviceService.updateLockState(deviceId:newState:) called - Implementation needed.")
-        // TODO: Implement by finding the correct adapter and executing the lock/unlock command.
-        //       Could potentially call the existing executeCommand(deviceId:command:) helper.
+        print("DeviceService: updateLockState called for device ID \\(deviceId). Routing to executeCommand.")
         let command: DeviceCommand = (newState == .locked) ? .lock : .unlock
-        _ = try await executeCommand(deviceId: deviceId, command: command) // Re-use existing command logic
-        // We might need to fetch the updated SmartDevice state afterwards if the protocol required it.
-        print("INFO: Attempted lock state update via executeCommand.")
-        // fatalError("Not implemented") // Temporarily using executeCommand
+        _ = try await executeCommand(deviceId: deviceId, command: command) 
+        print("INFO: Attempted lock state update via executeCommand for \\(deviceId).")
     }
 
     func updateSwitchState(deviceId: String, isOn: Bool) async throws {
-        print("STUB: DeviceService.updateSwitchState(deviceId:isOn:) called - Implementation needed.")
-        // TODO: Implement similarly to updateLockState using executeCommand.
+        print("DeviceService: updateSwitchState called for device ID \\(deviceId). Routing to executeCommand.")
         _ = try await executeCommand(deviceId: deviceId, command: .setSwitch(isOn))
-        print("INFO: Attempted switch state update via executeCommand.")
-        // fatalError("Not implemented") // Temporarily using executeCommand
+        print("INFO: Attempted switch state update via executeCommand for \\(deviceId).")
     }
 
     func updateDeviceHealth(_ device: SmartDevice, state: String) async throws {
-        print("STUB: DeviceService.updateDeviceHealth(SmartDevice:state:) called - Implementation needed.")
+        print("STUB: DeviceService.updateDeviceHealth(SmartDevice:state:) called - Requires multi-tenancy review.")
         // TODO: Implement logic. This might involve finding the adapter and calling
         //       an adapter-specific health update method, or this might be purely
         //       informational based on adapter polling/events and not directly settable.
-        fatalError("Not implemented")
+        fatalError("Not implemented. Requires multi-tenancy review.")
     }
 
     // MARK: - Helper for Error Checking
@@ -235,7 +285,69 @@ public enum DeviceServiceError: Error, Equatable {
     case commandExecutionFailed
     case operationNotSupported(String) // Indicate which operation
     case adapterFetchError(String) // Contains description from underlying adapter error
+    case unauthorizedAccess // Added for getDeviceState explicit check
     // Add other specific errors as needed
+}
+
+// Convenience extension for User model to check device access
+// This should ideally be part of User.swift or a User+Permissions.swift extension file.
+// For brevity in this edit, placing it here temporarily.
+extension User {
+    func canAccessDevice(propertyId devicePropertyId: String?, unitId deviceUnitId: String?, deviceId: String, devicePortfolioId: String?) -> Bool {
+        guard let associations = self.roleAssociations else {
+            // If user has no associations, check for general guest access by deviceId only
+            if let guestAccess = self.guestAccess, guestAccess.deviceIds.contains(deviceId) {
+                let now = Date()
+                return now >= guestAccess.validFrom && now <= guestAccess.validUntil && guestAccess.propertyId == nil && guestAccess.unitId == nil
+            }
+            return false
+        }
+
+        for association in associations {
+            switch association.associatedEntityType {
+            case .portfolio:
+                if association.roleWithinEntity == .portfolioAdmin || association.roleWithinEntity == .owner {
+                    // User is admin/owner of portfolio `association.associatedEntityId`.
+                    // Grant access ONLY if the device's portfolio (devicePortfolioId) matches `association.associatedEntityId`.
+                    if let dPortfolioId = devicePortfolioId, dPortfolioId == association.associatedEntityId {
+                        // print("DEBUG: User \\(self.id) access GRANTED to device in portfolio \\(dPortfolioId) based on portfolio admin/owner role for \\(association.associatedEntityId)")
+                        return true // Device is in the portfolio this user administers.
+                    } else {
+                        // print("DEBUG: User \\(self.id) access DENIED/SKIPPED for device (portfolio: \\(devicePortfolioId ?? "nil")) based on portfolio admin/owner role for \\(association.associatedEntityId)")
+                        // If devicePortfolioId is nil, or doesn't match, this specific portfolio role does not grant access.
+                        // We continue to check other associations or guest access.
+                    }
+                }
+            case .property:
+                if let propId = devicePropertyId, propId == association.associatedEntityId {
+                    if association.roleWithinEntity == .propertyManager {
+                        return true // Manager of this property
+                    }
+                }
+            case .unit:
+                if let uId = deviceUnitId, uId == association.associatedEntityId {
+                    if association.roleWithinEntity == .tenant {
+                        return true // Tenant of this unit
+                    }
+                }
+            }
+        }
+
+        // Check guest access tied to specific property/unit or device ID
+        if let guestAccess = self.guestAccess, guestAccess.deviceIds.contains(deviceId) {
+            let now = Date()
+            guard now >= guestAccess.validFrom && now <= guestAccess.validUntil else { return false }
+
+            if let guestPropertyId = guestAccess.propertyId {
+                if guestPropertyId == devicePropertyId { return true } // Guest for this property & device
+            } else if let guestUnitId = guestAccess.unitId {
+                if guestUnitId == deviceUnitId { return true } // Guest for this unit & device
+            } else {
+                return true // General guest access for this device ID, not tied to property/unit
+            }
+        }
+        return false
+    }
 }
 
 // TODO: Review DeviceManagerProtocol and update it to align with this

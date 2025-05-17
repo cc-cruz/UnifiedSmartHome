@@ -29,14 +29,15 @@ const DeviceSchema = new Schema({
     enum: ['LIGHT', 'THERMOSTAT', 'LOCK', 'CAMERA', 'DOORBELL', 'SPEAKER', 'TV', 'APPLIANCE', 'SENSOR', 'OTHER'],
     required: true
   },
-  room: {
+  unitId: {
     type: Schema.Types.ObjectId,
-    ref: 'Room'
+    ref: 'Unit',
+    required: false
   },
-  property: {
+  propertyId: {
     type: Schema.Types.ObjectId,
     ref: 'Property',
-    required: true
+    required: false
   },
   status: {
     type: String,

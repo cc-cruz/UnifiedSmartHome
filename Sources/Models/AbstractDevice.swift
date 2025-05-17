@@ -1,7 +1,7 @@
 import Foundation
 
 /// Base class for all smart home devices
-public class AbstractDevice: Identifiable, ObservableObject {
+public class AbstractDevice: Identifiable, ObservableObject, Codable {
     /// Unique identifier for the device
     public let id: String
     
@@ -96,5 +96,39 @@ public class AbstractDevice: Identifiable, ObservableObject {
     /// - Returns: Value if exists, nil otherwise
     public func getMetadata(key: String) -> String? {
         return self.metadata[key]
+    }
+
+    // MARK: - Codable Conformance
+
+    private enum CodingKeys: String, CodingKey {
+        case id, name, room, manufacturer, model, firmwareVersion, isOnline, lastSeen, dateAdded, metadata
+    }
+
+    public required init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        room = try container.decode(String.self, forKey: .room)
+        manufacturer = try container.decode(String.self, forKey: .manufacturer)
+        model = try container.decode(String.self, forKey: .model)
+        firmwareVersion = try container.decode(String.self, forKey: .firmwareVersion)
+        isOnline = try container.decode(Bool.self, forKey: .isOnline)
+        lastSeen = try container.decodeIfPresent(Date.self, forKey: .lastSeen)
+        dateAdded = try container.decode(Date.self, forKey: .dateAdded)
+        metadata = try container.decode([String: String].self, forKey: .metadata)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(name, forKey: .name)
+        try container.encode(room, forKey: .room)
+        try container.encode(manufacturer, forKey: .manufacturer)
+        try container.encode(model, forKey: .model)
+        try container.encode(firmwareVersion, forKey: .firmwareVersion)
+        try container.encode(isOnline, forKey: .isOnline)
+        try container.encodeIfPresent(lastSeen, forKey: .lastSeen)
+        try container.encode(dateAdded, forKey: .dateAdded)
+        try container.encode(metadata, forKey: .metadata)
     }
 } 

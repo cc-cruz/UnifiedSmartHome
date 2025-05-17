@@ -11,6 +11,8 @@ const authRoutes = require('./routes/auth');
 const propertyRoutes = require('./routes/properties');
 const deviceRoutes = require('./routes/devices');
 const userRoutes = require('./routes/users');
+const portfolioRoutes = require('./routes/portfolio.routes');
+const { protect } = require('./middleware/auth.middleware'); // Import the protect middleware
 
 // Initialize express app
 const app = express();
@@ -24,16 +26,31 @@ app.use(bodyParser.urlencoded({ extended: true }));
 // Connect to database
 connectDB();
 
-// Routes
+// Public Routes (like auth, health-check)
 app.use('/api/auth', authRoutes);
-app.use('/api/properties', propertyRoutes);
+app.get('/health', (req, res) => { // Moved health check to be explicitly public
+  res.status(200).send('Server is running');
+});
+
+// Protected API v1 Routes
+// All routes under /api/v1 will now be protected by the 'protect' middleware
+const apiV1Router = express.Router();
+apiV1Router.use('/portfolios', portfolioRoutes); 
+// Add other v1 routes here, e.g.:
+// apiV1Router.use('/properties', propertyRoutes); // If propertyRoutes are also v1 and need protection
+// apiV1Router.use('/units', unitRoutes); // If unitRoutes are also v1 and need protection
+
+app.use('/api/v1', protect, apiV1Router); // Protect all /api/v1 routes
+
+// Legacy or other public/unprotected routes (example)
+app.use('/api/properties', propertyRoutes); // Assuming these are currently unprotected or handled differently
 app.use('/api/devices', deviceRoutes);
 app.use('/api/users', userRoutes);
 
-// Health check route
-app.get('/health', (req, res) => {
-  res.status(200).send('Server is running');
-});
+// Health check route (already defined as public above)
+// app.get('/health', (req, res) => {
+//   res.status(200).send('Server is running');
+// });
 
 // Error handling middleware
 app.use((err, req, res, next) => {
