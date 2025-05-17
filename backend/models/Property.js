@@ -60,20 +60,7 @@ const PropertySchema = new Schema({
   defaultTimeZone: {
     type: String,
     required: false
-  },
-  createdAt: {
-    type: Date,
-    default: Date.now
-  },
-  updatedAt: {
-    type: Date,
-    default: Date.now
   }
-});
-
-PropertySchema.pre('save', function(next) {
-    this.updatedAt = Date.now();
-    next();
-});
+}, { timestamps: true });
 
 module.exports = mongoose.model('Property', PropertySchema); 

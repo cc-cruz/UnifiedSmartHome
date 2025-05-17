@@ -23,115 +23,182 @@ public class APIService {
     
     // MARK: - Authentication Methods
     
-    // Login with email and password
-    public func login(with credentials: LoginCredentials) -> AnyPublisher<AuthResponse, Error> {
-        // In a real implementation, this would make an API call
-        // For now, we'll simulate a successful login
-        
-        return Future<AuthResponse, Error> { promise in
-            // Simulate network delay
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                // Create a mock user
-                let user = User(
-                    id: "user1",
-                    email: credentials.email,
-                    firstName: "Demo",
-                    lastName: "User",
-                    role: .owner,
-                    properties: [],
-                    assignedRooms: []
-                )
-                
-                // Create a mock token
-                let token = "mock_token_\(UUID().uuidString)"
-                
-                // Return the response
-                promise(.success(AuthResponse(user: user, token: token)))
-            }
-        }
-        .eraseToAnyPublisher()
+    /// Login with email and password
+    /// Returns an AuthResponse containing the user with full tenancy context and auth token
+    public func login(with credentials: LoginCredentials) -> AnyPublisher<AuthResponse, SmartThingsError> {
+        let endpoint = "/api/auth/login"
+        return makePostRequest(to: endpoint, with: credentials)
     }
     
-    // Validate token
-    public func validateToken(token: String) -> AnyPublisher<User, Error> {
-        // In a real implementation, this would validate the token with the API
-        // For now, we'll simulate a valid token
-        
-        return Future<User, Error> { promise in
-            // Simulate network delay
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                // Create a mock user
-                let user = User(
-                    id: "user1",
-                    email: "demo@example.com",
-                    firstName: "Demo",
-                    lastName: "User",
-                    role: .owner,
-                    properties: [],
-                    assignedRooms: []
-                )
-                
-                // Return the user
-                promise(.success(user))
-            }
-        }
-        .eraseToAnyPublisher()
-    }
-    
-    // MARK: - User Methods
-    
-    // Get user by ID
-    public func getUser(id: String) async throws -> User {
-        // In a real implementation, this would fetch the user from the API
-        // For now, we'll return a mock user
-        
-        // Simulate network delay
-        try await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
-        
-        // Return a mock user
-        return User(
-            id: id,
-            email: "user\(id)@example.com",
-            firstName: "User",
-            lastName: "\(id)",
-            role: .owner,
-            properties: [],
-            assignedRooms: []
-        )
-    }
-    
-    // Update user role
-    public func updateUserRole(userId: String, role: String) async throws {
-        // In a real implementation, this would update the user's role via the API
-        // For now, we'll just simulate a delay
-        
-        // Simulate network delay
-        try await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
-        
-        // If we get here, the operation was successful
-    }
-    
-    // MARK: - Properties
-    public func getProperties() -> AnyPublisher<[Property], SmartThingsError> {
-        let endpoint = "/properties"
-        
+    /// Get current user profile with full tenancy context
+    public func getCurrentUser() -> AnyPublisher<User, SmartThingsError> {
+        let endpoint = "/api/v1/users/me"
         return makeGetRequest(to: endpoint)
     }
     
-    // MARK: - Devices
-    public func getDevices(forProperty propertyId: String) -> AnyPublisher<[Device], SmartThingsError> {
-        let endpoint = "/properties/\(propertyId)/devices"
-        
+    // MARK: - Device Methods
+    
+    /// Fetch devices with multi-tenancy context (portfolioId/propertyId/unitId)
+    public func getDevices(
+        portfolioId: String? = nil,
+        propertyId: String? = nil,
+        unitId: String? = nil
+    ) -> AnyPublisher<[Device], SmartThingsError> {
+        var endpoint = "/api/v1/devices"
+        var queryItems: [String] = []
+        if let pid = portfolioId { queryItems.append("portfolioId=\(pid)") }
+        if let propId = propertyId { queryItems.append("propertyId=\(propId)") }
+        if let unit = unitId { queryItems.append("unitId=\(unit)") }
+        if !queryItems.isEmpty {
+            endpoint += "?" + queryItems.joined(separator: "&")
+        }
         return makeGetRequest(to: endpoint)
     }
     
+    /// Control a device with specified command
     public func controlDevice(deviceId: String, command: [String: AnyCodable]) -> AnyPublisher<Device, SmartThingsError> {
-        let endpoint = "/devices/\(deviceId)/control"
-        
+        let endpoint = "/api/v1/devices/\(deviceId)/control"
         return makePostRequest(to: endpoint, with: command)
     }
     
+    // MARK: - Portfolio Methods
+    
+    /// Fetch portfolios with pagination support
+    public func getPortfolios(
+        page: Int? = nil,
+        limit: Int? = nil,
+        sortBy: String? = nil
+    ) -> AnyPublisher<PaginatedResponse<Portfolio>, SmartThingsError> {
+        var endpoint = "/api/v1/portfolios"
+        var queryItems: [String] = []
+        if let p = page { queryItems.append("page=\(p)") }
+        if let l = limit { queryItems.append("limit=\(l)") }
+        if let s = sortBy { queryItems.append("sortBy=\(s)") }
+        if !queryItems.isEmpty {
+            endpoint += "?" + queryItems.joined(separator: "&")
+        }
+        return makeGetRequest(to: endpoint)
+    }
+    
+    /// Get portfolio details by ID
+    public func getPortfolioDetails(portfolioId: String) -> AnyPublisher<Portfolio, SmartThingsError> {
+        let endpoint = "/api/v1/portfolios/\(portfolioId)"
+        return makeGetRequest(to: endpoint)
+    }
+    
+    /// Create a new portfolio
+    public func createPortfolio(
+        name: String,
+        administratorUserIds: [String]? = nil
+    ) -> AnyPublisher<Portfolio, SmartThingsError> {
+        let endpoint = "/api/v1/portfolios"
+        struct CreatePortfolioRequest: Codable {
+            let name: String
+            let administratorUserIds: [String]?
+        }
+        let body = CreatePortfolioRequest(name: name, administratorUserIds: administratorUserIds)
+        return makePostRequest(to: endpoint, with: body)
+    }
+    
+    // MARK: - Property Methods
+    
+    /// Fetch properties with optional portfolio filtering and pagination
+    public func getProperties(
+        portfolioId: String? = nil,
+        page: Int? = nil,
+        limit: Int? = nil,
+        sortBy: String? = nil
+    ) -> AnyPublisher<PaginatedResponse<Property>, SmartThingsError> {
+        var endpoint = "/api/v1/properties"
+        var queryItems: [String] = []
+        if let pid = portfolioId { queryItems.append("portfolioId=\(pid)") }
+        if let p = page { queryItems.append("page=\(p)") }
+        if let l = limit { queryItems.append("limit=\(l)") }
+        if let s = sortBy { queryItems.append("sortBy=\(s)") }
+        if !queryItems.isEmpty {
+            endpoint += "?" + queryItems.joined(separator: "&")
+        }
+        return makeGetRequest(to: endpoint)
+    }
+    
+    /// Get property details by ID
+    public func getPropertyDetails(propertyId: String) -> AnyPublisher<Property, SmartThingsError> {
+        let endpoint = "/api/v1/properties/\(propertyId)"
+        return makeGetRequest(to: endpoint)
+    }
+    
+    /// Create a new property
+    public func createProperty(
+        name: String,
+        portfolioId: String,
+        address: PropertyAddress? = nil,
+        managerUserIds: [String]? = nil
+    ) -> AnyPublisher<Property, SmartThingsError> {
+        let endpoint = "/api/v1/properties"
+        struct CreatePropertyRequest: Codable {
+            let name: String
+            let portfolioId: String
+            let address: PropertyAddress?
+            let managerUserIds: [String]?
+        }
+        let body = CreatePropertyRequest(
+            name: name,
+            portfolioId: portfolioId,
+            address: address,
+            managerUserIds: managerUserIds
+        )
+        return makePostRequest(to: endpoint, with: body)
+    }
+    
+    // MARK: - Unit Methods
+    
+    /// Fetch units with optional property filtering and pagination
+    public func getUnits(
+        propertyId: String? = nil,
+        page: Int? = nil,
+        limit: Int? = nil,
+        sortBy: String? = nil
+    ) -> AnyPublisher<PaginatedResponse<Unit>, SmartThingsError> {
+        var endpoint = "/api/v1/units"
+        var queryItems: [String] = []
+        if let pid = propertyId { queryItems.append("propertyId=\(pid)") }
+        if let p = page { queryItems.append("page=\(p)") }
+        if let l = limit { queryItems.append("limit=\(l)") }
+        if let s = sortBy { queryItems.append("sortBy=\(s)") }
+        if !queryItems.isEmpty {
+            endpoint += "?" + queryItems.joined(separator: "&")
+        }
+        return makeGetRequest(to: endpoint)
+    }
+    
+    /// Get unit details by ID
+    public func getUnitDetails(unitId: String) -> AnyPublisher<Unit, SmartThingsError> {
+        let endpoint = "/api/v1/units/\(unitId)"
+        return makeGetRequest(to: endpoint)
+    }
+    
+    /// Get tenants for a specific unit
+    public func getUnitTenants(unitId: String) -> AnyPublisher<[User], SmartThingsError> {
+        let endpoint = "/api/v1/units/\(unitId)/tenants"
+        return makeGetRequest(to: endpoint)
+            .map { (response: UnitTenantsResponse) in response.data.users }
+            .eraseToAnyPublisher()
+    }
+    
+    /// Add a tenant to a unit
+    public func addTenantToUnit(unitId: String, userId: String) -> AnyPublisher<UserRoleAssociation, SmartThingsError> {
+        let endpoint = "/api/v1/units/\(unitId)/tenants"
+        struct AddTenantRequest: Codable {
+            let userId: String
+        }
+        let body = AddTenantRequest(userId: userId)
+        return makePostRequest(to: endpoint, with: body)
+            .map { (response: AddTenantResponse) in response.data.userRoleAssociation }
+            .eraseToAnyPublisher()
+    }
+    
     // MARK: - Generic Network Methods
+    
     private func makeGetRequest<T: Decodable>(to endpoint: String) -> AnyPublisher<T, SmartThingsError> {
         guard let url = URL(string: "\(baseURL)\(endpoint)") else {
             return Fail(error: SmartThingsError.invalidURL).eraseToAnyPublisher()
@@ -155,7 +222,13 @@ public class APIService {
                         .mapError { SmartThingsError.decodingError($0) }
                         .eraseToAnyPublisher()
                 } else {
-                    return Fail(error: SmartThingsError.serverError(httpResponse.statusCode)).eraseToAnyPublisher()
+                    // Try to decode error response
+                    do {
+                        let errorResponse = try self.jsonDecoder.decode(ErrorResponse.self, from: data)
+                        return Fail(error: SmartThingsError.apiError(errorResponse)).eraseToAnyPublisher()
+                    } catch {
+                        return Fail(error: SmartThingsError.serverError(httpResponse.statusCode)).eraseToAnyPublisher()
+                    }
                 }
             }
             .eraseToAnyPublisher()
@@ -194,9 +267,61 @@ public class APIService {
                         .mapError { SmartThingsError.decodingError($0) }
                         .eraseToAnyPublisher()
                 } else {
-                    return Fail(error: SmartThingsError.serverError(httpResponse.statusCode)).eraseToAnyPublisher()
+                    // Try to decode error response
+                    do {
+                        let errorResponse = try self.jsonDecoder.decode(ErrorResponse.self, from: data)
+                        return Fail(error: SmartThingsError.apiError(errorResponse)).eraseToAnyPublisher()
+                    } catch {
+                        return Fail(error: SmartThingsError.serverError(httpResponse.statusCode)).eraseToAnyPublisher()
+                    }
                 }
             }
             .eraseToAnyPublisher()
+    }
+    
+    // MARK: - Helper Types
+    
+    /// Generic paginated response wrapper
+    public struct PaginatedResponse<T: Codable>: Codable {
+        public let data: DataWrapper<[T]>
+        public let pagination: PaginationInfo
+        
+        public struct DataWrapper<U: Codable>: Codable {
+            public let items: U
+        }
+    }
+    
+    public struct PaginationInfo: Codable {
+        public let totalItems: Int
+        public let totalPages: Int
+        public let currentPage: Int
+        public let pageSize: Int
+    }
+    
+    /// Response type for unit tenants endpoint
+    private struct UnitTenantsResponse: Codable {
+        let status: String
+        let data: DataWrapper
+        
+        struct DataWrapper: Codable {
+            let users: [User]
+        }
+    }
+    
+    /// Response type for adding tenant to unit
+    private struct AddTenantResponse: Codable {
+        let status: String
+        let data: DataWrapper
+        
+        struct DataWrapper: Codable {
+            let userRoleAssociation: UserRoleAssociation
+        }
+    }
+    
+    /// Error response from API
+    private struct ErrorResponse: Codable {
+        let status: String
+        let message: String
+        let details: String?
     }
 } 

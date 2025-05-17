@@ -1,6 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const User = require('../models/User');
+const { protect } = require('../middleware/auth.middleware');
+const UserRoleAssociation = require('../models/UserRoleAssociation');
 
 // Middleware for authentication would go here
 // const auth = require('../middleware/auth');
@@ -8,25 +10,20 @@ const User = require('../models/User');
 // @route   GET /api/users/me
 // @desc    Get current user profile
 // @access  Private
-router.get('/me', async (req, res, next) => {
+router.get('/me', protect, async (req, res, next) => {
   try {
-    // In a real implementation, you would get the user ID from the JWT token
-    // const userId = req.user.id;
-    const userId = '123'; // Dummy user ID for now
-    
+    const userId = req.user.id; // Provided by protect middleware
+
     const user = await User.findById(userId).select('-password');
-    
     if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found'
-      });
+      return res.status(404).json({ success: false, message: 'User not found' });
     }
-    
-    res.status(200).json({
-      success: true,
-      data: user
-    });
+
+    const roleAssociations = await UserRoleAssociation.find({ userId });
+    const userResponse = user.toJSON();
+    userResponse.roleAssociations = roleAssociations;
+
+    res.status(200).json({ success: true, data: userResponse });
   } catch (error) {
     next(error);
   }

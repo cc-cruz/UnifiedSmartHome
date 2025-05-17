@@ -54,15 +54,7 @@ const DeviceSchema = new Schema({
   metadata: {
     type: Schema.Types.Mixed,
     default: {}
-  },
-  createdAt: {
-    type: Date,
-    default: Date.now
-  },
-  updatedAt: {
-    type: Date,
-    default: Date.now
   }
-});
+}, { timestamps: true });
 
 module.exports = mongoose.model('Device', DeviceSchema); 

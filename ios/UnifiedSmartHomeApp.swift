@@ -8,6 +8,7 @@ struct UnifiedSmartHomeApp: App {
     
     // StateObject to manage the lifecycle of our core services
     @StateObject private var appServices = AppServices()
+    @StateObject private var userContext = UserContextViewModel()
     
     var body: some Scene {
         WindowGroup {
@@ -15,6 +16,7 @@ struct UnifiedSmartHomeApp: App {
             ContentView() // Replace MainTabView or adapt it
                 .environmentObject(appServices.deviceService) // Provide DeviceService
                 .environmentObject(appServices.userManager) // Provide UserManager
+                .environmentObject(userContext)
                 // Provide other services/viewmodels as needed
                 .onAppear {
                     // Setup any app-wide configurations here
@@ -133,6 +135,7 @@ class AppServices: ObservableObject {
 struct ContentView: View { // Example replacement for MainTabView
     @EnvironmentObject var deviceService: DeviceManagerProtocol
     @EnvironmentObject var userManager: UserManager
+    @EnvironmentObject var userContext: UserContextViewModel
     
     var body: some View {
         // Check login state, show LoginView or main content
@@ -376,6 +379,7 @@ class DevicesViewModel: ObservableObject {
 // The consolidated view for displaying all devices
 struct DevicesView: View {
      @StateObject var viewModel: DevicesViewModel // Owns the ViewModel passed from MainAppView
+     @EnvironmentObject var userContext: UserContextViewModel
      
      var body: some View {
          List {
@@ -388,18 +392,18 @@ struct DevicesView: View {
              if viewModel.isLoading && viewModel.devices.isEmpty { // Show loading only on initial load
                  ProgressView("Loading Devices...")
                      .frame(maxWidth: .infinity, alignment: .center)
-             } else if !viewModel.isLoading && viewModel.devices.isEmpty && viewModel.errorMessage == nil {
-                 Text("No devices found. Pull down to refresh.")
+             } else if !viewModel.isLoading && filteredDevices.isEmpty && viewModel.errorMessage == nil {
+                 Text("No devices found for this context. Pull down to refresh.")
                       .foregroundColor(.gray)
                       .frame(maxWidth: .infinity, alignment: .center)
              } else {
                  // Device Rows
-                 ForEach(viewModel.devices, id: \\.id) {
-                     DeviceRow(device: $0)
-                         .environmentObject(viewModel) // Pass ViewModel down to row for actions
-                         // Add swipe actions if needed
-                         // .swipeActions { Button("Refresh") { Task { await viewModel.refreshDeviceState(deviceId: $0.id) } } }
-                 }
+                 ForEach(filteredDevices, id: \.id) {
+                      DeviceRow(device: $0)
+                          .environmentObject(viewModel) // Pass ViewModel down to row for actions
+                          // Add swipe actions if needed
+                          // .swipeActions { Button("Refresh") { Task { await viewModel.refreshDeviceState(deviceId: $0.id) } } }
+                  }
              }
          }
          .navigationTitle("Devices") // Set title here if used within NavigationView
@@ -428,6 +432,23 @@ struct DevicesView: View {
          //          ProgressView().controlSize(.large) 
          //     } 
          // }
+     }
+     
+     private var filteredDevices: [AbstractDevice] {
+         viewModel.devices.filter { device in
+             // If a unit is selected, match unitId first.
+             if let unitId = userContext.selectedUnitId, let lock = device as? LockDevice {
+                 return lock.unitId == unitId
+             }
+             // Else if property selected, match propertyId
+             if let propertyId = userContext.selectedPropertyId {
+                 if let lock = device as? LockDevice {
+                     return lock.propertyId == propertyId
+                 }
+                 if let thermo = device as? ThermostatDevice { /* assume propertyId available via metadata? */ }
+             }
+             return true // fall back if no context filter
+         }
      }
      
      // Helper view for displaying errors

@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const User = require('../models/User');
 const jwt = require('jsonwebtoken');
+const UserRoleAssociation = require('../models/UserRoleAssociation');
 require('dotenv').config();
 
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -46,9 +47,15 @@ router.post('/register', async (req, res, next) => {
     };
     const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '1h' });
     
+    // After generating token and before sending response, fetch user roleAssociations and build full user object
+    const userFull = await User.findById(user.id).select('-password');
+    const roleAssociations = await UserRoleAssociation.find({ userId: user.id });
+    const userResponse = userFull.toJSON();
+    userResponse.roleAssociations = roleAssociations;
+    
     res.status(201).json({
       success: true,
-      user: user.toJSON(), // Use toJSON() to strip password
+      user: userResponse,
       token
     });
   } catch (error) {
@@ -92,9 +99,15 @@ router.post('/login', async (req, res, next) => {
     };
     const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '1h' });
     
+    // After generating token and before sending response, fetch user roleAssociations and build full user object
+    const userFull = await User.findById(user.id).select('-password');
+    const roleAssociations = await UserRoleAssociation.find({ userId: user.id });
+    const userResponse = userFull.toJSON();
+    userResponse.roleAssociations = roleAssociations;
+    
     res.status(200).json({
       success: true,
-      user: user.toJSON(), // Use toJSON() to strip password
+      user: userResponse,
       token
     });
   } catch (error) {

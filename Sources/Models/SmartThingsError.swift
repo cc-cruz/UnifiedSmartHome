@@ -50,6 +50,7 @@ public enum SmartThingsError: LocalizedError, Hashable {
     case decodingError(Error)
     case encodingError(Error)
     case serverError(Int) // Assuming Int for status code
+    case apiError(ErrorResponse) // New case for structured API errors
     
     // Implement Hashable
     public func hash(into hasher: inout Hasher) {
@@ -113,6 +114,11 @@ public enum SmartThingsError: LocalizedError, Hashable {
         case .serverError(let statusCode):
             hasher.combine(28)
             hasher.combine(statusCode)
+        case .apiError(let response):
+            hasher.combine(29)
+            hasher.combine(response.status)
+            hasher.combine(response.message)
+            hasher.combine(response.details ?? "")
         }
     }
 
@@ -143,14 +149,16 @@ public enum SmartThingsError: LocalizedError, Hashable {
         case (.groupNotFound, .groupNotFound): return true
         case (.groupOperationFailed, .groupOperationFailed): return true
         case (.invalidGroupConfiguration, .invalidGroupConfiguration): return true
-        case (.commandExecutionFailed(let ld, let lc, let lr), .commandExecutionFailed(let rd, let rc, let rr)):
-            return ld == rd && lc == rc && lr == rr
+        case (.commandExecutionFailed(let l1, let l2, let l3), .commandExecutionFailed(let r1, let r2, let r3)):
+            return l1 == r1 && l2 == r2 && l3 == r3
         case (.commandNotSupported(let l), .commandNotSupported(let r)): return l == r
         case (.invalidResponseFormat(let l), .invalidResponseFormat(let r)): return l == r
         case (.invalidURL, .invalidURL): return true
         case (.decodingError(let l), .decodingError(let r)): return l.localizedDescription == r.localizedDescription
         case (.encodingError(let l), .encodingError(let r)): return l.localizedDescription == r.localizedDescription
         case (.serverError(let l), .serverError(let r)): return l == r
+        case (.apiError(let l), .apiError(let r)):
+            return l.status == r.status && l.message == r.message && l.details == r.details
         default: return false
         }
     }
@@ -219,12 +227,8 @@ public enum SmartThingsError: LocalizedError, Hashable {
             return "Failed to encode request body: \(error.localizedDescription)"
         case .serverError(let statusCode):
             return "API server returned an error: Status Code \(statusCode)"
-        case .commandExecutionFailed:
-            return "Command execution failed. Check device status and command details."
-        case .commandNotSupported:
-            return "Check the device capabilities or the command syntax. This command may not be applicable in the current state."
-        case .invalidResponseFormat:
-            return "This may be a temporary API issue or an unexpected response structure. If persistent, check for API updates or report the issue."
+        case .apiError(let response):
+            return "\(response.message)" + (response.details.map { ": \($0)" } ?? "")
         }
     }
     
@@ -285,6 +289,8 @@ public enum SmartThingsError: LocalizedError, Hashable {
             return "Check the device capabilities or the command syntax. This command may not be applicable in the current state."
         case .invalidResponseFormat:
             return "This may be a temporary API issue or an unexpected response structure. If persistent, check for API updates or report the issue."
+        case .apiError:
+            return "Please check the error details and try again. If the issue persists, contact support."
         }
     }
     
@@ -315,6 +321,13 @@ public enum SmartThingsError: LocalizedError, Hashable {
             return false // Generally not client-recoverable by simple retry
         case .invalidGroupConfiguration:
             return false
+        case .apiError(let response):
+            // Consider API errors recoverable only if they are transient (e.g. rate limiting)
+            return response.status == "error" && (
+                response.message.contains("rate limit") ||
+                response.message.contains("try again") ||
+                response.message.contains("temporary")
+            )
         }
     }
     
@@ -331,8 +344,27 @@ public enum SmartThingsError: LocalizedError, Hashable {
             return 1 // 1 second
         case .commandNotSupported, .invalidResponseFormat:
             return 0 // No specific retry recommended
+        case .apiError(let response):
+            // If the error response includes a retry-after header or suggestion, use that
+            if response.message.contains("rate limit") {
+                return 60 // 1 minute for rate limiting
+            }
+            return 0 // No retry for other API errors
         default:
             return 0 // No retry
+        }
+    }
+    
+    /// Response type for API errors
+    public struct ErrorResponse: Codable, Hashable {
+        public let status: String
+        public let message: String
+        public let details: String?
+        
+        public init(status: String, message: String, details: String? = nil) {
+            self.status = status
+            self.message = message
+            self.details = details
         }
     }
 } 
