@@ -1,5 +1,5 @@
 import XCTest
-@testable import UnifiedSmartHome
+@testable import Models
 
 final class SmartThingsErrorTests: XCTestCase {
     

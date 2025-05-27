@@ -1,14 +1,17 @@
 import Foundation
 import Models // Ensure Models are imported for protocols and device types
 import Combine // For potential future state publishing
+import SwiftUI
 
 // Service for managing devices via injected adapters
 // Conforms to DeviceManagerProtocol - we may need to adjust the protocol later
-class DeviceService: DeviceManagerProtocol {
+class DeviceService<Context: UserContextInterface>: DeviceManagerProtocol where Context: ObservableObject {
 
     // Private storage for the injected adapters
     private let adapters: [SmartDeviceAdapter]
     private let userManager: UserManager // Added UserManager dependency
+    private let apiService: APIService   // Added APIService dependency
+    @ObservedObject private var userContextProvider: Context // Use the generic type Context
     
     // Logger (Optional but good practice)
     // private let logger: YourLoggerProtocol // Assuming a logging system exists
@@ -16,107 +19,97 @@ class DeviceService: DeviceManagerProtocol {
     // Dependency Injection via initializer
     // Removed singleton pattern
     // Inject adapters and any other dependencies (like a logger)
-    init(adapters: [SmartDeviceAdapter], userManager: UserManager) { // logger: YourLoggerProtocol, userManager: UserManager) {
+    init(adapters: [SmartDeviceAdapter], userManager: UserManager, apiService: APIService, userContextProvider: Context) { // Use Context for parameter
         self.adapters = adapters
         self.userManager = userManager // Store injected UserManager
+        self.apiService = apiService     // Store injected APIService
+        self.userContextProvider = userContextProvider // Store injected UserContextInterface
         // self.logger = logger
-        print("DeviceService initialized with \\(adapters.count) adapters and UserManager.")
+        print("DeviceService initialized with \(adapters.count) adapters, UserManager, APIService, and UserContextInterface.")
     }
 
     // MARK: - Core DeviceManagerProtocol Implementation (Adapter-Based)
 
     // Fetch devices from all configured adapters concurrently and filter by user permissions
     func getAllDevices() async throws -> [AbstractDevice] {
-        print("DeviceService: Fetching devices from all adapters...")
+        print("DeviceService: Fetching devices from backend API based on UserContextInterface...")
         
-        // Use a TaskGroup to fetch from all adapters concurrently
-        let allDevicesFromAdapters = await withTaskGroup(of: Result<[AbstractDevice], Error>.self, returning: [AbstractDevice].self) { group in
-            
-            for adapter in adapters {
-                group.addTask {
-                    do {
-                        // logger.debug("Fetching devices from adapter: \\(type(of: adapter))")
-                        let devices = try await adapter.fetchDevices()
-                        // logger.info("Fetched \\(devices.count) devices from adapter: \\(type(of: adapter))")
-                        return .success(devices)
-                    } catch {
-                        // logger.error("Failed to fetch devices from adapter \\(type(of: adapter)): \\(error)")
-                         print("Error fetching from adapter \\(type(of: adapter)): \\(error.localizedDescription)")
-                        return .failure(error) // Propagate the error to handle below
-                    }
-                }
-            }
-            
-            var combinedDevices: [AbstractDevice] = []
-            for await result in group {
-                switch result {
-                case .success(let devices):
-                    combinedDevices.append(contentsOf: devices)
-                case .failure(let error):
-                    // Decide how to handle partial failures.
-                    // Option 1: Log and continue (returning partial results) - Chosen here
-                     print("Warning: Adapter failed during fetch, processing partial results. Error: \\(error.localizedDescription)")
-                    // Option 2: Rethrow the first error encountered
-                    // throw error
-                    // Option 3: Collect all errors and throw an aggregate error
-                }
-            }
-            return combinedDevices
-        }
-        
-        print("DeviceService: Fetched a total of \\(allDevicesFromAdapters.count) devices from adapters.")
-
-        // Filter devices based on user permissions
-        guard let currentUser = userManager.currentUser else {
+        guard userManager.currentUser != nil else {
             print("DeviceService: No current user found. Returning empty list.")
-            return [] // Or throw an authentication error
+            // Or throw an authentication error, e.g., DeviceServiceError.authenticationRequired
+            return [] 
         }
 
-        let filteredDevices = allDevicesFromAdapters.filter { device in
-            let devicePropertyId: String?
-            let deviceUnitId: String?
+        let propertyId: String? = userContextProvider.selectedPropertyId // Use the protocol property
+        let unitId: String? = userContextProvider.selectedUnitId // Use the protocol property
 
-            if let lockDevice = device as? LockDevice {
-                devicePropertyId = lockDevice.propertyId
-                deviceUnitId = lockDevice.unitId
-            } else if let switchDevice = device as? SwitchDevice { // Assuming SwitchDevice also gets these properties
-                devicePropertyId = switchDevice.propertyId
-                deviceUnitId = switchDevice.unitId
-            } else if let thermostatDevice = device as? ThermostatDevice { // Assuming ThermostatDevice also gets these
-                devicePropertyId = thermostatDevice.propertyId
-                deviceUnitId = thermostatDevice.unitId
-            } else if let lightDevice = device as? LightDevice { // Assuming LightDevice also gets these
-                devicePropertyId = lightDevice.propertyId
-                deviceUnitId = lightDevice.unitId
-            } else {
-                devicePropertyId = device.metadata["propertyId"]
-                deviceUnitId = device.metadata["unitId"]
-            }
-            
-            // NEW: Determine devicePortfolioId
-            var devicePortfolioId: String? = nil
-            if let propId = devicePropertyId {
-                // This method needs to be added to UserManager or a relevant service.
-                // It's responsible for mapping a propertyId to its parent portfolioId.
-                // For this example, we assume userManager can provide this. This might be async in a real scenario.
-                devicePortfolioId = userManager.getPortfolioIdForProperty(propertyId: propId)
-            }
-            
-            return currentUser.canAccessDevice(
-                propertyId: devicePropertyId, 
-                unitId: deviceUnitId, 
-                deviceId: device.id, 
-                devicePortfolioId: devicePortfolioId // Pass the looked-up portfolio ID
-            )
+        print("DeviceService: Fetching with context - PropertyID: \(propertyId ?? "None"), UnitID: \(unitId ?? "None")")
+
+        return try await fetchDevices(propertyId: propertyId, unitId: unitId)
+    }
+
+    // New method to fetch devices with specific context or all accessible if context is nil
+    public func fetchDevices(propertyId: String?, unitId: String?) async throws -> [AbstractDevice] {
+        print("DeviceService: Fetching devices with PropertyID: \(propertyId ?? "nil"), UnitID: \(unitId ?? "nil")")
+
+        guard userManager.currentUser != nil else {
+            print("DeviceService: No current user for fetchDevices. Returning empty list.")
+            return []
         }
+        
+        // Using a cancellable for the Combine publisher
+        var cancellables = Set<AnyCancellable>()
 
-        print("DeviceService: Filtered devices count: \\(filteredDevices.count)")
-        return filteredDevices
+        do {
+            let devicesFromAPI: [Device] = try await withCheckedThrowingContinuation { continuation in
+                apiService.getDevices(propertyId: propertyId, unitId: unitId) 
+                    .sink(receiveCompletion: { completion in
+                        if case .failure(let error) = completion {
+                            print("DeviceService: Error fetching devices from API: \(error.localizedDescription)")
+                            continuation.resume(throwing: error)
+                        }
+                    }, receiveValue: { devices in
+                        print("DeviceService: Successfully fetched \(devices.count) devices from API.")
+                        continuation.resume(returning: devices)
+                    })
+                    .store(in: &cancellables) // Manage subscription
+            }
+            
+            // Transform [Models.Device] to [AbstractDevice]
+            let abstractDevices: [AbstractDevice] = devicesFromAPI.compactMap { apiDevice -> AbstractDevice? in
+                // Determine the concrete type based on apiDevice.deviceTypeName or capabilities
+                // This is a simplified example; you might need more sophisticated logic
+                let typeName = apiDevice.deviceTypeName?.lowercased() ?? "generic"
+                
+                // TODO: Enhance type determination logic, possibly using capabilities as well.
+                // For now, primarily using deviceTypeName.
+
+                if typeName.contains("lock") {
+                    return LockDevice(fromApiDevice: apiDevice)
+                } else if typeName.contains("light") || typeName.contains("bulb") {
+                    return LightDevice(fromApiDevice: apiDevice)
+                } else if typeName.contains("switch") {
+                    return SwitchDevice(fromApiDevice: apiDevice)
+                } else if typeName.contains("thermostat") {
+                    return ThermostatDevice(fromApiDevice: apiDevice)
+                } else {
+                    // Fallback to GenericDevice
+                    return GenericDevice(fromApiDevice: apiDevice)
+                }
+            }
+            
+            print("DeviceService: Transformed \(abstractDevices.count) devices to AbstractDevice subclasses.")
+            return abstractDevices
+
+        } catch {
+            print("DeviceService: Failed to fetch devices from backend API. Error: \(error.localizedDescription)")
+            throw error
+        }
     }
 
     // Get the state of a specific device by querying adapters
     func getDeviceState(id: String) async throws -> AbstractDevice {
-         print("DeviceService: Getting state for device ID \\(id)...")
+         print("DeviceService: Getting state for device ID \(id)...")
         
         var lastError: Error? = nil
         var foundDevice: AbstractDevice? = nil
@@ -151,7 +144,7 @@ class DeviceService: DeviceManagerProtocol {
             }
 
             if !currentUser.canAccessDevice(propertyId: devicePropertyId, unitId: deviceUnitId, deviceId: device.id, devicePortfolioId: devicePortfolioId) {
-                print("DeviceService: User \\(currentUser.id) not authorized for device \\(id) after fetch.")
+                print("DeviceService: User \(currentUser.id) not authorized for device \(id) after fetch.")
                 throw DeviceServiceError.unauthorizedAccess
             }
         }
@@ -162,21 +155,21 @@ class DeviceService: DeviceManagerProtocol {
     // Permissions for command execution are handled by SecurityService -> LockDAL -> LockDevice.canPerformRemoteOperation
     // So, no explicit permission check needed here again, assuming SecurityService is called first.
     func executeCommand(deviceId: String, command: DeviceCommand) async throws -> AbstractDevice {
-        print("DeviceService: Executing command \\(command) for device ID \\(deviceId)...")
+        print("DeviceService: Executing command \(command) for device ID \(deviceId)...")
         
         var lastError: Error? = nil
         
         for adapter in adapters {
             do {
-                // logger.debug("Attempting command \\(command) on device \\(deviceId) via adapter: \\(type(of: adapter))")
+                // logger.debug("Attempting command \(command) on device \(deviceId) via adapter: \(type(of: adapter))")
                 let updatedDevice = try await adapter.executeCommand(deviceId: deviceId, command: command)
-                // logger.info("Command \\(command) successful for device \\(deviceId) via adapter: \\(type(of: adapter))")
+                // logger.info("Command \(command) successful for device \(deviceId) via adapter: \(type(of: adapter))")
                 
                 // TODO: Publish state change notifications (using Combine/Notifications)
                 
                 return updatedDevice
             } catch let error as SmartDeviceError where error == .deviceNotFound(deviceId) {
-                 // logger.debug("Device \\(deviceId) not found by adapter \\(type(of: adapter)) for command execution.")
+                 // logger.debug("Device \(deviceId) not found by adapter \(type(of: adapter)) for command execution.")
                  lastError = error
                  continue // Try next adapter
              } catch let error as SmartDeviceError where isNotFoundError(error) {
@@ -185,7 +178,7 @@ class DeviceService: DeviceManagerProtocol {
                  continue
             } catch let error as SmartDeviceError where error == .commandNotSupported(String(describing: command)) || error == .unsupportedOperation {
                 // This adapter found the device but doesn't support the command. This *might* mean no other adapter will either.
-                // logger.warning("Command \\(command) not supported by adapter \\(type(of: adapter)) for device \\(deviceId).")
+                // logger.warning("Command \(command) not supported by adapter \(type(of: adapter)) for device \(deviceId).")
                 // Option 1: Continue searching other adapters (Chosen here - maybe another adapter handles it?)
                 lastError = error
                 continue
@@ -193,8 +186,8 @@ class DeviceService: DeviceManagerProtocol {
                 // throw error
             } catch {
                 // A different error occurred (network, API, command failed)
-                // logger.error("Error executing command \\(command) for device \\(deviceId) from adapter \\(type(of: adapter)): \\(error)")
-                 print("Error executing command for \\(deviceId) from adapter \\(type(of: adapter)): \\(error.localizedDescription)")
+                // logger.error("Error executing command \(command) for device \(deviceId) from adapter \(type(of: adapter)): \(error)")
+                 print("Error executing command for \(deviceId) from adapter \(type(of: adapter)): \(error.localizedDescription)")
                  lastError = error
                  // Option: Re-throw immediately? Depends on desired behaviour for partial failures.
                  // throw error
@@ -202,7 +195,7 @@ class DeviceService: DeviceManagerProtocol {
         }
         
         // If we looped through all adapters and couldn't execute the command
-        // logger.error("Command \\(command) could not be executed for device \\(deviceId) by any adapter.")
+        // logger.error("Command \(command) could not be executed for device \(deviceId) by any adapter.")
         throw lastError ?? DeviceServiceError.commandExecutionFailed // Throw last encountered error, default to general failure
     }
 
@@ -240,16 +233,16 @@ class DeviceService: DeviceManagerProtocol {
     }
 
     func updateLockState(deviceId: String, newState: LockDevice.LockState) async throws {
-        print("DeviceService: updateLockState called for device ID \\(deviceId). Routing to executeCommand.")
+        print("DeviceService: updateLockState called for device ID \(deviceId). Routing to executeCommand.")
         let command: DeviceCommand = (newState == .locked) ? .lock : .unlock
         _ = try await executeCommand(deviceId: deviceId, command: command) 
-        print("INFO: Attempted lock state update via executeCommand for \\(deviceId).")
+        print("INFO: Attempted lock state update via executeCommand for \(deviceId).")
     }
 
     func updateSwitchState(deviceId: String, isOn: Bool) async throws {
-        print("DeviceService: updateSwitchState called for device ID \\(deviceId). Routing to executeCommand.")
+        print("DeviceService: updateSwitchState called for device ID \(deviceId). Routing to executeCommand.")
         _ = try await executeCommand(deviceId: deviceId, command: .setSwitch(isOn))
-        print("INFO: Attempted switch state update via executeCommand for \\(deviceId).")
+        print("INFO: Attempted switch state update via executeCommand for \(deviceId).")
     }
 
     func updateDeviceHealth(_ device: SmartDevice, state: String) async throws {
@@ -310,10 +303,10 @@ extension User {
                     // User is admin/owner of portfolio `association.associatedEntityId`.
                     // Grant access ONLY if the device's portfolio (devicePortfolioId) matches `association.associatedEntityId`.
                     if let dPortfolioId = devicePortfolioId, dPortfolioId == association.associatedEntityId {
-                        // print("DEBUG: User \\(self.id) access GRANTED to device in portfolio \\(dPortfolioId) based on portfolio admin/owner role for \\(association.associatedEntityId)")
+                        // print("DEBUG: User \(self.id) access GRANTED to device in portfolio \(dPortfolioId) based on portfolio admin/owner role for \(association.associatedEntityId)")
                         return true // Device is in the portfolio this user administers.
                     } else {
-                        // print("DEBUG: User \\(self.id) access DENIED/SKIPPED for device (portfolio: \\(devicePortfolioId ?? "nil")) based on portfolio admin/owner role for \\(association.associatedEntityId)")
+                        // print("DEBUG: User \(self.id) access DENIED/SKIPPED for device (portfolio: \(devicePortfolioId ?? "nil")) based on portfolio admin/owner role for \(association.associatedEntityId)")
                         // If devicePortfolioId is nil, or doesn't match, this specific portfolio role does not grant access.
                         // We continue to check other associations or guest access.
                     }

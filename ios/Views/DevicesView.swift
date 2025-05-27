@@ -1,9 +1,12 @@
 import SwiftUI
 
 struct DevicesView: View {
+    @StateObject private var viewModel: DevicesViewModel
+    @EnvironmentObject var userContextViewModel: UserContextViewModel
+    @StateObject private var thermostatViewModel = ThermostatViewModel()
+    
     @State private var searchText = ""
     @State private var selectedFilter: DeviceFilter = .all
-    @StateObject private var thermostatViewModel = ThermostatViewModel()
     
     enum DeviceFilter: String, CaseIterable, Identifiable {
         case all = "All"
@@ -13,6 +16,14 @@ struct DevicesView: View {
         case cameras = "Cameras"
         
         var id: String { self.rawValue }
+    }
+    
+    init(deviceService: DeviceService, userManager: UserManager, userContextViewModel: UserContextViewModel) {
+        _viewModel = StateObject(wrappedValue: DevicesViewModel(
+            deviceService: deviceService, 
+            userManager: userManager, 
+            userContextViewModel: userContextViewModel
+        ))
     }
     
     var body: some View {
@@ -42,18 +53,26 @@ struct DevicesView: View {
                     deviceListContent
                 }
             }
-            .navigationTitle("Devices")
+            .navigationTitle(viewModel.currentContextName)
             .searchable(text: $searchText, prompt: "Search devices")
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(action: {
-                        // Add device action
-                    }) {
-                        Image(systemName: "plus")
+                    if viewModel.canAddDeviceInCurrentContext {
+                        Button(action: {
+                            print("Add device tapped in context: \(viewModel.currentContextName)")
+                        }) {
+                            Image(systemName: "plus")
+                        }
                     }
                 }
             }
+            .onAppear {
+                Task {
+                    await viewModel.fetchDevices()
+                }
+            }
         }
+        .environmentObject(userContextViewModel)
     }
     
     // Thermostat-specific view
@@ -155,59 +174,65 @@ struct DevicesView: View {
     
     // Regular device list view
     private var deviceListContent: some View {
-        List {
-            // Room section
-            Section(header: Text("Living Room")) {
-                // Show thermostats if we have any and we're not filtering them out
-                if selectedFilter == .all {
-                    ForEach(thermostatViewModel.thermostats.filter { $0.name.contains("Living") }) { thermostat in
-                        NavigationLink(destination: ThermostatDetailView(viewModel: thermostatViewModel, thermostat: thermostat)) {
-                            DeviceListItem(
-                                name: thermostat.name,
-                                type: "Thermostat",
-                                isOnline: thermostat.status == .online
-                            )
+        Group {
+            if viewModel.devicesState.isLoading && viewModel.devicesState.data == nil {
+                ProgressView("Loading devices...")
+            } else if let error = viewModel.devicesState.error, viewModel.devicesState.data == nil {
+                VStack(spacing: 16) {
+                    Image(systemName: "exclamationmark.triangle")
+                        .font(.system(size: 48))
+                        .foregroundColor(.red)
+                    Text("Error loading devices in \(viewModel.currentContextName)")
+                        .font(.headline)
+                    Text(error.localizedDescription)
+                        .font(.subheadline).foregroundColor(.secondary).multilineTextAlignment(.center).padding(.horizontal)
+                    Button("Try Again") { Task { await viewModel.fetchDevices() } }.buttonStyle(.bordered)
+                }
+            } else if viewModel.groupedDevices.isEmpty && !viewModel.devicesState.isLoading {
+                 VStack(spacing: 16) {
+                    Image(systemName: "questionmark.folder")
+                        .font(.system(size: 48))
+                        .foregroundColor(.gray)
+                    Text("No devices found in \(viewModel.currentContextName)")
+                        .font(.headline)
+                    Text(viewModel.canAddDeviceInCurrentContext ? "You can add a new device here." : "Check back later or contact support.")
+                        .font(.subheadline).foregroundColor(.secondary).multilineTextAlignment(.center).padding(.horizontal)
+                    if viewModel.canAddDeviceInCurrentContext {
+                        Button("Add Device") { /* Add device action */ }.buttonStyle(.borderedProminent)
+                    }
+                }
+            } else {
+                List {
+                    ForEach(viewModel.groupedDevices) { group in
+                        Section(header: Text(group.name)) {
+                            ForEach(group.devices, id: \.id) { device in
+                                NavigationLink(destination: destinationForDevice(device)) {
+                                    DeviceListItem(
+                                        name: device.name,
+                                        type: String(describing: type(of: device)),
+                                        isOnline: device.status == .online
+                                    )
+                                }
+                            }
                         }
                     }
                 }
-            }
-            
-            Section(header: Text("Kitchen")) {
-                // Show thermostats if we have any and we're not filtering them out
-                if selectedFilter == .all {
-                    ForEach(thermostatViewModel.thermostats.filter { $0.name.contains("Kitchen") }) { thermostat in
-                        NavigationLink(destination: ThermostatDetailView(viewModel: thermostatViewModel, thermostat: thermostat)) {
-                            DeviceListItem(
-                                name: thermostat.name,
-                                type: "Thermostat",
-                                isOnline: thermostat.status == .online
-                            )
-                        }
-                    }
-                }
-            }
-            
-            Section(header: Text("Bedroom")) {
-                // Show thermostats if we have any and we're not filtering them out
-                if selectedFilter == .all {
-                    ForEach(thermostatViewModel.thermostats.filter { $0.name.contains("Bedroom") }) { thermostat in
-                        NavigationLink(destination: ThermostatDetailView(viewModel: thermostatViewModel, thermostat: thermostat)) {
-                            DeviceListItem(
-                                name: thermostat.name,
-                                type: "Thermostat",
-                                isOnline: thermostat.status == .online
-                            )
-                        }
-                    }
-                }
+                .listStyle(InsetGroupedListStyle())
             }
         }
-        .listStyle(InsetGroupedListStyle())
-        .onAppear {
-            // Attempt to fetch thermostats when the view appears
-            if thermostatViewModel.nestOAuthManager.isAuthenticated && thermostatViewModel.thermostats.isEmpty {
-                thermostatViewModel.fetchThermostats()
-            }
+        .refreshable {
+            await viewModel.fetchDevices()
+        }
+    }
+
+    @ViewBuilder
+    private func destinationForDevice(_ device: AbstractDevice) -> some View {
+        if let lock = device as? LockDevice {
+            Text("Lock Detail for \(lock.name)")
+        } else if let thermostat = device as? ThermostatDevice {
+            ThermostatDetailView(viewModel: thermostatViewModel, thermostat: thermostat)
+        } else {
+            Text("Detail view for \(device.name) (Type: \(String(describing: type(of: device))))")
         }
     }
 }
@@ -283,8 +308,34 @@ struct DeviceListItem: View {
     }
 }
 
+/*
+// Preview Provider for DevicesView
+// This will require providing mock/stub implementations for DeviceService, UserManager,
+// and UserContextViewModel if you want previews to work, as their initializers need concrete instances.
+// Alternatively, for complex views, previews might be omitted or use a simpler setup.
+
 struct DevicesView_Previews: PreviewProvider {
     static var previews: some View {
-        DevicesView()
+        // Example with placeholder initializers (these would need to be actual or mock classes)
+        // class MockDeviceService: DeviceService { /* ... */ }
+        // class MockUserManager: UserManager { /* ... */ }
+        // class MockUserContextViewModel: UserContextViewModel { /* ... */ }
+        
+        // let mockDeviceService = MockDeviceService(adapters: [], userManager: MockUserManager(), apiService: APIService(), userContextViewModel: MockUserContextViewModel())
+        // let mockUserManager = MockUserManager(apiService: APIService(), keychainHelper: Helpers.KeychainHelper())
+        // let mockUserContext = MockUserContextViewModel()
+
+        // DevicesView(
+        //     deviceService: mockDeviceService, 
+        //     userManager: mockUserManager, 
+        //     userContextViewModel: mockUserContext
+        // )
+        // .environmentObject(mockUserContext) // Also provide UserContextViewModel as an environment object
+        // .environmentObject(mockUserManager) // If UserManager is also used as EnvObject anywhere
+
+        // Simplified: If you cannot easily mock, you might need to remove the preview for this view
+        // or create a very basic version of the view for preview purposes.
+        Text("DevicesView Preview (Requires Dependency Injection Setup)")
     }
 } 
+*/ 

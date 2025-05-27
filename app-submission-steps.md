@@ -1,7 +1,7 @@
-# App Submission Plan for Sunday
+# App Submission Plan 
 
 ## Goal
-Successfully submit a functional version of the Unified Smart Home app to the App Store by Sunday. This plan outlines the prioritized development tasks to achieve this, focusing on core functionality and stability.
+Successfully submit a functional version of the Unified Smart Home app to the App Store. This plan outlines the prioritized development tasks to achieve this, focusing on core functionality and stability.
 
 ## Guiding Principles
 1.  **Prioritize Ruthlessly**: Focus on the P0 and P1 tasks first.
@@ -309,12 +309,12 @@ Create RESTful APIs for managing Portfolios, Properties, and Units. Ensure all e
         *   When a user is assigned as a portfolio admin, property manager, or tenant, corresponding entries must be created in `UserRoleAssociation`.
         *   When assignments are revoked, entries must be removed.
         *   Ensure atomicity if multiple database operations are involved (e.g., creating a user and then assigning them a role).
-    *   **Cascading Operations / Data Integrity**:
-        *   What happens when a Portfolio is deleted? Are its Properties, Units, Devices, and related UserRoleAssociations also deleted (cascade delete)? Or is the deletion prevented if dependencies exist? Define this policy.
-        *   Similar considerations for deleting Properties and Units.
-        *   Preventing orphaned records (e.g., a `UserRoleAssociation` pointing to a non-existent entity).
-    *   **Idempotency**: For operations that might be retried (e.g., adding a user to a role), ensure they are idempotent where possible (executing them multiple times has the same effect as executing them once).
-    *   **Invitations**: If inviting users who don't exist yet, a separate invitation flow/model might be needed, creating the `UserRoleAssociation` once the invited user signs up.
+    *   **Cascading Operat.ions / Data Integrity**:
+        *   What happens w.hen a Portfolio is deleted? Are its Properties, Units, Devices, and related UserRoleAssociations also deleted (cascade d.elete)? Or is the deletion prevented if dependencies exist? Define this policy.
+        *   Similar consid.erations for deleting Properties and Units.
+        *   Preventing orp.haned records (e.g., a `UserRoleAssociation` pointing to a non-existent entity).
+    *   **Idempotency**: F.or operations that might be retried (e.g., adding a user to a role), ensure they are idempotent where possible (executing th.em multiple times has the same effect as executing them once).
+    *   **Invitations**: I.f inviting users who don't exist yet, a separate invitation flow/model might be needed, creating the `UserRoleAssociation` .once the invited user signs up.
     *   **Default Entities**: Logic to set/update `defaultPortfolioId`, `defaultPropertyId`, `defaultUnitId` on the User model when new associations are made or context changes.
 
 5.  **Consistent Error Handling**: (Reinforce from API conventions)
@@ -489,9 +489,7 @@ With the Network Service updated to fetch tenancy-aware data, the iOS app's core
 
 ### Step 8: Modify iOS DAL (`LockDAL.swift`) for Tenancy-Aware Security
 
-**Status: Partially addressed in `LockDevice.swift` model, but `SecurityService.swift` requires full implementation.**
-
-The `SecurityService.swift` is the central authority for validating if a user can perform an operation on a device. It needs to be significantly enhanced to use the detailed multi-tenancy context.
+**Status: COMPLETE.** SecurityService.swift is now the central authority for validating if a user can perform an operation on a device, leveraging User.roleAssociations and device context (unitId, propertyId, resolved portfolioId). LockDAL.swift calls SecurityService with full User and LockDevice objects before any lock/unlock command.
 
 1.  **`SecurityService.swift` - Core Validation Logic**: 
     *   **Primary Method (Example Signature)**: `func canUser(_ user: User, performOperation operation: LockOperationType, onDevice device: LockDevice) -> Bool` (or an async version if it needs to fetch additional data, though ideally, `user` and `device` objects are passed in fully populated).
@@ -536,159 +534,321 @@ The `SecurityService.swift` is the central authority for validating if a user ca
 
 4.  **Error Types**: Define specific error types (e.g., `SecurityError.permissionDenied`, `SecurityError.invalidRoleForOperation`) that can be thrown and handled by the UI layer to provide meaningful feedback.
 
-### Step 9: Initial UI/ViewModel Scoping for Multi-Tenancy
+### Step 9: Update iOS UI and ViewModels for Tenancy Awareness
 
-**Status: PENDING DEFINITION.** This step outlines necessary UI and ViewModel adaptations for multi-tenancy.
+**Status: COMPLETE.** Building on the service layer updates, this step involved scoping UI elements and ViewModels to reflect the user's current tenancy context (selected Portfolio, Property, Unit).
 
-The introduction of multi-tenancy will require changes to the UI to allow users to navigate and interact with data within their permitted contexts (portfolios, properties, units). ViewModels will need to be updated to manage and provide this context-specific data to the Views.
+1.  **`UserContextViewModel.swift` (or similar Context Manager)**
+    *   **Status: COMPLETE.**
+    *   Purpose: Manages the user's currently selected `Portfolio`, `Property`, and `Unit` context.
+    *   Responsibilities:
+        *   Store current `selectedPortfolio: Portfolio?`, `selectedProperty: Property?`, `selectedUnit: Unit?`.
+        *   Provide methods to change context (e.g., `selectPortfolio(Portfolio)`, `selectProperty(Property)`).
+        *   Publish changes to the UI (e.g., using `@Published` properties).
+        *   Fetch and refresh available contexts (portfolios, properties, units) for the logged-in user.
+        *   Inform other ViewModels/Services about context changes.
+    *   Integration: Used by top-level views and passed down or accessed via environment objects.
 
-**General UI/UX Principles for Multi-Tenancy:**
-*   **Clear Context Indication**: The user should always understand which portfolio, property, or unit context they are currently viewing/managing.
-*   **Easy Context Switching**: If a user has access to multiple entities (e.g., a property manager for several properties), switching between these contexts should be intuitive.
-*   **Scoped Data Display**: Lists of devices, units, etc., must only display items relevant to the current active context and permitted by the user's roles.
-*   **Role-Appropriate Actions**: UI elements for actions (buttons, menus) should only be enabled/visible if the user's role in the current context permits that action.
+2.  **`LockViewModel.swift` / `DevicesViewModel.swift` (and related ViewModels)**
+    *   **Status: COMPLETE.**
+    *   Modifications:
+        *   Depend on `UserContextViewModel` to understand current scope.
+        *   Fetch devices based on the selected `Portfolio`, `Property`, or `Unit` from the context.
+        *   Ensure device operations are performed within the correct tenancy scope.
+        *   Refresh device lists when the user context changes.
+    *   Example: If a `Property` is selected, list all devices in that property and its units. If a `Unit` is selected, list only devices in that unit.
 
-1.  **Context Selection UI (If Applicable)**:
-    *   **Scenario**: For users who can access multiple entities at the same level (e.g., a Portfolio Admin for multiple Portfolios, or a Property Manager for multiple Properties).
-    *   **Implementation Ideas**:
-        *   **Dropdown/Picker**: A `Picker` in the main navigation bar or a settings screen to select the active Portfolio or Property.
-        *   **List View with Navigation**: A dedicated view listing all accessible Portfolios/Properties, allowing the user to drill down.
-        *   **Tab Bar (Less Likely for Deep Hierarchy)**: If a user only has a few top-level contexts.
-    *   **State Management**: The selected context (e.g., `selectedPortfolioId`, `selectedPropertyId`) should be managed, possibly by `UserManager` or a dedicated UI state service, and ViewModels should observe this state.
-    *   `UserManager.defaultPortfolioId` or `UserManager.defaultPropertyId` can be used to set the initial selection.
+3.  **UI Views (e.g., `LockListView.swift`, `DevicesView.swift`, `LockDetailView.swift`)**
+    *   **Status: COMPLETE.**
+    *   Modifications:
+        *   Display context information (e.g., "Viewing devices in Property X").
+        *   Provide UI elements for context selection (e.g., Pickers or navigation to a context selection screen).
+        *   React to changes in `UserContextViewModel` to update displayed data.
+        *   Ensure actions (e.g., tapping a device) consider the current context.
 
-2.  **Device List View (`LockListView.swift`, `DevicesView.swift`, or similar)**:
-    *   **ViewModel (`LockListViewModel.swift`, etc.) Changes**:
-        *   The ViewModel will now depend on `UserManager` to know the `currentUser` and their selected/default context (e.g., `selectedPropertyId` or `selectedUnitId`).
-        *   It will call the updated `DeviceService.fetchDevices(propertyId: ..., unitId: ...)` method, passing the appropriate context ID.
-        *   If no specific context is selected (and the user role allows a broader view, e.g., a portfolio admin), it might fetch all devices accessible to the user, with the UI potentially grouping them by property/unit.
-    *   **View Changes**:
-        *   The title or a header in the view should indicate the current context (e.g., "Devices in Property X").
-        *   If displaying devices from multiple sub-contexts (e.g., all units in a property), use sections or other visual grouping.
+**Outcome:** The iOS app's UI and local data management are now aware of and responsive to the multi-tenancy hierarchy, ensuring users only see and interact with entities relevant to their selected context and permissions.
 
-3.  **Unit List View (If a distinct view for listing units within a property exists or is needed)**:
-    *   **ViewModel Changes**:
-        *   Will fetch units for a specific `propertyId` (obtained from the current context).
-        *   Uses `NetworkService.fetchUnitsForProperty(propertyId: ...)` via a corresponding `PropertyService` or `UnitService` method.
-    *   **View Changes**: Displays a list of `Unit` items, allowing navigation to a `UnitDetailView` or `DeviceListView` scoped to that unit.
-
-4.  **Property List View (If applicable for high-level admins)**:
-    *   **ViewModel Changes**:
-        *   Fetches properties for a specific `portfolioId` or all accessible properties based on user role.
-        *   Uses `NetworkService.fetchPropertiesForPortfolio(portfolioId: ...)` or `NetworkService.fetchProperties(...)` via a service.
-
-5.  **Detail Views (`LockDetailView.swift`, `UnitDetailView.swift`, `PropertyDetailView.swift`)**:
-    *   **ViewModel Changes**:
-        *   Ensure the ViewModel is initialized with the correct entity ID (e.g., `LockDetailViewModel(deviceId: String, unitId: String, propertyId: String)`).
-        *   Actions (e.g., toggling a lock) will call `LockDAL` methods, which now internally use `SecurityService` for authorization. The ViewModel should be prepared to handle potential `SecurityError.permissionDenied` errors and update the UI accordingly (e.g., show an alert, disable the control).
-    *   **View Changes**: No major changes expected unless displaying context-specific information or actions.
-
-6.  **User Profile / Settings View**:
-    *   May need to display the user's current roles and associations (e.g., "Manager of Property X", "Tenant of Unit Y").
-    *   If context switching is managed here, provide UI for it.
-
-7.  **Role-Based UI Elements**: 
-    *   ViewModels should expose properties indicating if the current user can perform certain actions based on their role in the current context (e.g., `canEditPropertyDetails: Bool`, `canAddUnit: Bool`).
-    *   Views will use these properties to conditionally enable/disable or show/hide buttons and other interactive elements (e.g., an "Edit" button might be disabled if the user is not a manager of the current property).
-    *   This relies on `UserManager` and `SecurityService` (or convenience methods on `User` model) providing the necessary permission checks.
-
-8.  **Handling Empty States**: If a user has access to a property but there are no units or devices, or if a tenant has no assigned devices, the UI should display a clear empty state message, possibly with guidance on next steps (e.g., "No devices found in Unit X. Contact your property manager.").
+---
 
 ### Step 10: Testing Strategy for P0 Multi-Tenancy
 
-**Status: PENDING DEFINITION.** This step outlines the testing approach for the multi-tenancy features.
+**Status: DEFINED.**
 
-A comprehensive testing strategy is essential to ensure the multi-tenancy implementation is correct, secure, and reliable.
+This step focuses on defining and executing a comprehensive testing strategy to ensure the correctness, security, and reliability of the P0 multi-tenancy features.
 
-1.  **Backend - Unit Tests**:
-    *   **Focus**: Test individual modules, services, and helper functions in isolation.
-    *   **Models**: 
-        *   Validation logic (e.g., can a `UserRoleAssociation` be created with an invalid `associatedEntityType`?).
-        *   Any custom methods or virtual properties on models.
-    *   **Services (e.g., `PortfolioService`, `PropertyService`, `UnitService`, `UserRoleAssociationService`, `UserService`)**: 
-        *   Mock database interactions (ORM/ODM calls) to test business logic purely.
-        *   Test creation, retrieval, update, and deletion logic for each service.
-        *   Verify correct creation/deletion of `UserRoleAssociation` entries when parent entities are managed.
-        *   Test error handling (e.g., what happens if a dependent record is not found?).
-        *   Test logic for determining default portfolio/property/unit for a user.
-    *   **Authorization Middleware Helpers (if any logic is extracted)**: Test functions that determine access based on roles and associations.
-    *   **Input Validation Helpers**: Test any custom validation functions.
+**A. Backend Unit Tests**
 
-2.  **Backend - Integration Tests**:
-    *   **Focus**: Test the interaction between different components, including API endpoints, services, and the database.
-    *   **Setup**: Use a dedicated test database seeded with appropriate test data (various user roles, portfolios, properties, units, devices, and role associations).
-    *   **API Endpoint Tests**:
-        *   For each endpoint defined in Step 3:
-            *   Test successful CRUD operations (POST, GET, PUT, DELETE) with valid inputs and appropriate user roles/permissions.
-            *   Test authorization: Attempt to access/modify resources with insufficient permissions (wrong role, no association, wrong user) and verify `403 Forbidden` or `401 Unauthorized` responses.
-            *   Test input validation: Send invalid/missing data and verify `400 Bad Request` responses with clear error messages.
-            *   Test edge cases (e.g., deleting a portfolio with properties, trying to create entities with non-existent parent IDs).
-            *   Verify correct data is returned, including populated fields and correct filtering for list endpoints.
-        *   **Specific Scenarios**: 
-            *   Login (`/auth/login`): Verify the response includes the correct `roleAssociations` and default entity IDs.
-            *   Device Listing (`/devices`): Verify it only returns devices accessible to the authenticated user based on their tenancy.
-            *   Device Operations (`/devices/:id/action`): Verify operations are blocked/allowed correctly based on tenancy.
-    *   **Data Integrity**: Test that relationships between entities are correctly maintained (e.g., creating a property correctly links to a portfolio).
+*   **Focus:** Individual components of the backend, such as models, services, utility functions, and individual middleware units in isolation.
+*   **Key Areas/Modules to Test:**
+    *   Data Models (`Portfolio`, `Property`, `Unit`, `User`, `UserRoleAssociation`): Validation logic, default values, relationships (mocked), and any custom methods.
+    *   Service Layer Abstractions: Business logic for creating, reading, updating, and deleting entities, ensuring correct interaction with data models (mocked DAL).
+    *   Authorization Middleware: Logic for checking user roles and permissions against specific entities (e.g., `canUserAccessPortfolio(userId, portfolioId, requiredRole)`).
+    *   Input Validation Logic: For API request payloads (e.g., ensuring required fields are present, data types are correct).
+    *   Utility functions used in tenancy logic.
+*   **Types of Test Cases/Scenarios:**
+    *   **Model Validation:**
+        *   Test creating models with valid and invalid data (e.g., missing required fields, incorrect data types for IDs, names).
+        *   Test model methods for correctness (e.g., if a User model has a helper `hasRole(role, entityId)`).
+    *   **Service Logic:**
+        *   Test service functions for creating entities, ensuring correct associations are made (e.g., creating a Property correctly links it to a Portfolio).
+        *   Test retrieval logic (e.g., `getPropertiesForUser(userId)` returns only properties the user has access to, based on mocked `UserRoleAssociation` data).
+        *   Test update logic, ensuring permissions are checked before updates are applied (mocked).
+        *   Test deletion logic, including any cascading effects or disassociations (mocked).
+        *   Test error handling for non-existent entities or failed operations.
+    *   **Authorization Middleware:**
+        *   Test with various user roles and entity combinations to ensure correct allowance or denial of access.
+        *   Test edge cases, such as a user with multiple roles.
+    *   **Input Validation:**
+        *   Test with valid payloads.
+        *   Test with missing required fields.
+        *   Test with incorrectly formatted data (e.g., invalid email, non-UUID string for an ID).
+        *   Test for boundary conditions (e.g., string lengths).
+*   **Tools/Techniques:**
+    *   Node.js testing frameworks (e.g., Jest, Mocha).
+    *   Mocking libraries (e.g., Jest mocks, Sinon.js) to isolate units by mocking database interactions, external services, and other modules.
+    *   Assertion libraries (e.g., Chai, Jest's built-in assertions).
 
-3.  **iOS - Unit Tests**:
-    *   **Focus**: Test individual Swift classes, structs, and functions in isolation.
-    *   **Models (`Portfolio`, `Property`, `Unit`, `User`, `LockDevice`, `UserRoleAssociation`)**: 
-        *   `Codable` conformance (encoding and decoding to/from mock JSON).
-        *   Initialization logic.
-        *   Any computed properties or helper methods (e.g., `User.isManager(ofPropertyId:)`).
-    *   **ViewModels (e.g., `LockListViewModel`, `PropertyViewModel`, etc.)**: 
-        *   Mock services (`NetworkService`, `UserManager`, `DeviceService`, `SecurityService`).
-        *   Test that ViewModels correctly call service methods based on input or state changes.
-        *   Test logic for transforming data from services into UI-publishable properties.
-        *   Test state management (e.g., `isLoading`, error states).
-        *   Test permission-based properties (e.g., `canEditPropertyDetails`).
-    *   **Services (`UserManager`, `DeviceService`, `SecurityService`, `NetworkService` - Mocked Network Layer)**:
-        *   `UserManager`: Test login/logout logic, storage/retrieval of `currentUser` with tenancy info, management of selected context.
-        *   `DeviceService`: Test logic for fetching devices based on different tenancy contexts (mocking `NetworkService` responses).
-        *   `SecurityService`: Test the core validation logic (`canUserPerformOperation`) with various `User` and `LockDevice` mock objects representing different roles and scenarios. (This is critical).
-        *   `NetworkService`: While harder to unit test directly (often requires integration tests), any internal data mapping or request-building logic can be unit tested with mocked inputs/outputs.
+**B. Backend Integration Tests**
 
-4.  **iOS - Integration Tests**:
-    *   **Focus**: Test interactions between different components of the app, typically with a mocked backend.
-    *   **ViewModel-Service Interactions**: Verify that ViewModels correctly interact with Services (`UserManager`, `DeviceService`, `SecurityService`, `NetworkService`) and handle their responses (success/error).
-        *   Example: Simulate a login, ensure `UserManager` updates, then a `LockListViewModel` fetches devices, and `DeviceService` uses the tenancy context from `UserManager` to make the (mocked) network call.
-    *   **Data Flow**: Ensure data flows correctly from mocked network responses -> `NetworkService` -> `Data Services` -> `ViewModels` -> UI properties.
-    *   **Security Flow**: Test that attempting an action in a ViewModel correctly triggers `LockDAL` -> `SecurityService` checks, and the UI reacts appropriately to permission denial (using mocked `SecurityService` responses).
-    *   **Context Switching**: If UI for context switching exists, test that changing the active context correctly updates data displayed in relevant ViewModels.
+*   **Focus:** Interactions between different components of the backend, including API endpoints, service layers, and the database. Verifying that data flows correctly and authorization is enforced at the API level.
+*   **Key Areas/Modules to Test:**
+    *   **API Endpoints:** Test the full request-response cycle for all multi-tenancy related endpoints (`/api/v1/portfolios`, `/api/v1/properties`, `/api/v1/units`, and user/auth endpoints related to tenancy).
+    *   **Authentication & Authorization Flow:** Ensure JWT authentication and role-based authorization work correctly across API endpoints.
+    *   **Database Interactions:** Verify that API actions result in correct data creation, updates, and deletions in the test database.
+    *   **UserRoleAssociation Logic:** Test the creation and enforcement of user roles and their associations with entities through API calls.
+*   **Types of Test Cases/Scenarios:**
+    *   **CRUD Operations via API:**
+        *   For each entity (Portfolio, Property, Unit):
+            *   Create an entity with a user having appropriate permissions (e.g., Portfolio Owner creating a Property). Verify 201 status and correct data in response and DB.
+            *   Attempt to create an entity with a user lacking permissions. Verify 403 Forbidden.
+            *   Read/List entities:
+                *   As a user with access (e.g., Portfolio Admin listing Properties in their Portfolio). Verify 200 and correct, scoped data.
+                *   As a user without access. Verify 200 and empty list or 403/404 if accessing a specific restricted entity.
+            *   Update an entity with appropriate permissions. Verify 200 and correct data updates in DB.
+            *   Attempt to update an entity with insufficient permissions. Verify 403 Forbidden.
+            *   Delete an entity with appropriate permissions. Verify 204/200 and entity removal/soft delete in DB.
+            *   Attempt to delete an entity with insufficient permissions. Verify 403 Forbidden.
+    *   **Role Management:**
+        *   Test API endpoints for adding/removing users from roles (e.g., adding a Property Manager to a Property). Verify success and that the user then has the correct permissions.
+        *   Test that a user cannot assign a role higher than their own (if applicable).
+    *   **Data Integrity:**
+        *   Test scenarios like deleting a Portfolio: ensure associated Properties, Units, and Role Associations are handled correctly (e.g., cascade delete or prevent deletion if dependencies exist, as per design).
+        *   Test creating a Unit for a non-existent Property. Verify 400/404.
+    *   **Authentication & Default Context:**
+        *   Test login with users having different default portfolio/property/unit settings.
+        *   Test API endpoints that might rely on default contexts if not explicitly provided.
+*   **Tools/Techniques:**
+    *   Testing frameworks like Jest or Mocha with Supertest for HTTP request testing.
+    *   A dedicated test database that can be seeded with prerequisite data and reset between test runs.
+    *   Scripts for seeding the database with various user roles and entity hierarchies.
+    *   API documentation tools (e.g., Swagger/OpenAPI) can help define test cases.
 
-5.  **End-to-End (E2E) Manual Testing Scenarios (Crucial for UX and complex interactions)**:
-    *   **User Persona-Based Testing**: Define key user personas (Portfolio Owner, Portfolio Admin, Property Manager, Tenant, Guest) and test their complete flows.
-    *   **Scenario 1: Portfolio Owner/Admin Setup**
-        1.  Owner signs up/logs in.
-        2.  Owner creates a new Portfolio.
-        3.  Owner adds another user as a Portfolio Admin to this Portfolio.
-        4.  New Portfolio Admin logs in, can see and manage the assigned Portfolio.
-        5.  Owner/Admin creates a Property within the Portfolio.
-        6.  Owner/Admin assigns a user as a Property Manager for this Property.
-    *   **Scenario 2: Property Manager Operations**
-        1.  Property Manager logs in, sees only their assigned Properties.
-        2.  PM selects a Property.
-        3.  PM creates a Unit within the Property.
-        4.  PM assigns a Device (Lock) to the Unit.
-        5.  PM assigns a Tenant to the Unit.
-        6.  PM views/operates devices within their managed Property.
-    *   **Scenario 3: Tenant Experience**
-        1.  Tenant logs in, sees only their assigned Unit(s) and associated devices.
-        2.  Tenant can operate locks in their Unit.
-        3.  Tenant attempts to access devices in another Unit or Property (should be denied).
-    *   **Scenario 4: Guest Access (If implemented in P0)**
-        1.  Tenant or PM grants guest access to a specific lock for a limited time.
-        2.  Guest logs in (or uses guest link), can only operate the permitted lock during the valid window.
-    *   **Scenario 5: Negative Cases - Permission Denials**
-        *   Systematically try actions that should be denied based on role and context (e.g., Tenant trying to add a new Unit, Property Manager trying to delete a Portfolio they don't own).
-        *   Verify clear error messages or disabled UI elements.
-    *   **Scenario 6: Context Switching (If UI supports it)**
-        *   User with multiple property assignments switches active property context.
-        *   Verify all relevant views (device lists, unit lists) update to reflect the new context.
-    *   **Cross-Cutting Concerns**: Test across different device types, network conditions (simulated offline/slow network).
+**C. iOS Unit Tests**
+
+*   **Focus:** Individual components of the iOS app in isolation, primarily ViewModels, Services, and utility functions.
+*   **Key Areas/Modules to Test:**
+    *   **ViewModels (`UserContextViewModel`, `LockViewModel`, `DevicesViewModel`, etc.):**
+        *   Logic for fetching and processing data from services (mocked).
+        *   State management (e.g., correctly updating `@Published` properties).
+        *   Context selection logic (e.g., `selectPortfolio` updates internal state and triggers appropriate actions).
+        *   Permission checking logic within ViewModels (e.g., `canEditProperty` based on user roles and current context).
+    *   **Network Service Layer (Multi-Tenancy specific parts):**
+        *   Construction of API requests for new tenancy endpoints.
+        *   Parsing of API responses into Swift data models (`Portfolio`, `Property`, `Unit`).
+        *   Error handling from network requests.
+    *   **Core Services (`UserManager`, `DeviceService` tenancy updates):**
+        *   Logic for managing user context.
+        *   Fetching entities based on current user context (mocked network layer).
+        *   Filtering logic (e.g., `devices(forUnit: unitId)`).
+    *   **Data Models (`Portfolio`, `Property`, `Unit`, `User`, `LockDevice`):**
+        *   Any local computed properties or methods (e.g., `User.roles(forPortfolioId:)`).
+        *   `Codable` conformance (encoding/decoding specific to multi-tenancy fields).
+    *   **Utility functions** related to tenancy or UI display logic.
+*   **Types of Test Cases/Scenarios:**
+    *   **ViewModel Logic:**
+        *   Test that calling `fetchPortfolios()` on `UserContextViewModel` correctly updates its `portfolios` array (using a mock service).
+        *   Test that `selectProperty(someProperty)` on `UserContextViewModel` updates `selectedProperty` and potentially triggers a refresh in `DevicesViewModel` (mocked interaction).
+        *   Test `DevicesViewModel` correctly filters devices when the context changes from a Property to a specific Unit.
+        *   Test UI-facing formatted strings or computed properties based on model data.
+        *   Test error states in ViewModels when services return errors.
+    *   **Service Logic:**
+        *   Test `UserManager.switchContext(toPortfolio: somePortfolio)` correctly updates the current user context.
+        *   Test `DeviceService.fetchDevices(forProperty: propertyId)` correctly forms the API request and parses the response (using mock network client).
+    *   **Model Logic:**
+        *   Test `User.isOwner(ofPortfolioId: testId)` returns true/false based on mocked `roleAssociations`.
+        *   Test encoding/decoding of `LockDevice` including `propertyId` and `unitId`.
+*   **Tools/Techniques:**
+    *   XCTest framework.
+    *   Mocking frameworks/techniques for Swift (e.g., creating mock objects that conform to protocols, or using libraries like Cuckoo/SwiftyMocky, though manual mocks are often sufficient).
+    *   Dependency injection to provide mock services/managers to ViewModels.
+
+**D. iOS Integration Tests**
+
+*   **Focus:** Interactions between different parts of the iOS app, such as ViewModels and Services, or Services and the actual Network Layer (against a mock backend or a controlled test backend).
+*   **Key Areas/Modules to Test:**
+    *   **User Context Flow:** Selecting a portfolio, then a property, then a unit, and verifying that the relevant ViewModels (e.g., `DevicesViewModel`) update their data correctly by making real (or mock-backend) network calls.
+    *   **Data Synchronization:** How the app fetches and updates its local representation of tenancy data from the backend.
+    *   **UI-driven Actions:** Triggering an action in the UI (e.g., attempting to control a lock) and ensuring the correct service calls are made with the appropriate tenancy context.
+    *   **Authentication Flow with Tenancy:** Login process, fetching initial user context and associated entities.
+*   **Types of Test Cases/Scenarios:**
+    *   **Context Selection & Data Display:**
+        *   Simulate user logging in: verify `UserContextViewModel` fetches and allows selection of the user's portfolios.
+        *   Simulate selecting a Portfolio: verify `UserContextViewModel` updates, and dependent ViewModels (e.g., for Properties) fetch relevant data.
+        *   Continue for Property and Unit selection, verifying device lists etc., are correctly scoped.
+    *   **CRUD Operations (UI-driven, if applicable for P0):**
+        *   If any UI allows creation/modification of tenancy entities (e.g., a super admin view not part of P0 user flow but used for testing setup), test these flows.
+    *   **Device Interaction with Context:**
+        *   Select a Unit context.
+        *   Attempt to list/view/operate a device within that Unit. Verify the correct API calls are made including `unitId` or `propertyId`.
+    *   **Error Handling Across Layers:**
+        *   Simulate network errors when fetching portfolios/properties and verify UI displays appropriate error messages.
+        *   Simulate backend returning a 403 Forbidden when trying to access a resource; verify UI handles this gracefully.
+*   **Tools/Techniques:**
+    *   XCTest framework.
+    *   Mock backend server (e.g., using tools like MockServer, WireMock, or a simple local Node.js/Express server) to provide controlled API responses for tenancy endpoints.
+    *   Potentially UI Testing with XCUITest if a more end-to-end feel is desired for specific integration flows, but focus here is more on component integration below full E2E.
+
+**E. End-to-End (E2E) Manual Testing Scenarios**
+
+*   **Focus:** Simulating real user workflows across the entire application stack (iOS app and live backend) to ensure the multi-tenancy features work as expected from a user's perspective. This includes UI, navigation, data display, and permission enforcement.
+*   **Key Areas/Modules to Test:**
+    *   Complete user journeys involving login, context selection, data viewing, and device interaction.
+    *   Correctness of UI elements in reflecting current tenancy context and permissions.
+    *   Data consistency between what the user sees and what their role/context allows.
+    *   Security aspects: ensuring users cannot access or manipulate data outside their permitted scope.
+*   **User Personas & Setup:**
+    *   **Persona 1: Alice (Portfolio Owner)**
+        *   Owns "Alice's Portfolio".
+        *   Administers "Alice's Portfolio".
+        *   Manages "Property A" and "Property B" within "Alice's Portfolio".
+        *   Can view/manage all units and devices in "Property A" and "Property B".
+    *   **Persona 2: Bob (Portfolio Admin)**
+        *   Admin for "Charlie's Portfolio" (owned by another user, Charlie).
+        *   Manages "Property C" in "Charlie's Portfolio".
+        *   Can view/manage units/devices in "Property C".
+        *   Cannot see or manage "Alice's Portfolio".
+    *   **Persona 3: David (Property Manager)**
+        *   Manages "Property A" (under "Alice's Portfolio").
+        *   Can view/manage "Unit 1" and "Unit 2" in "Property A" and their devices.
+        *   Cannot manage "Property B" or other portfolios.
+    *   **Persona 4: Eve (Tenant)**
+        *   Tenant of "Unit 1" in "Property A" (under "Alice's Portfolio").
+        *   Can view/operate devices assigned to "Unit 1".
+        *   Cannot see/access "Unit 2", other properties, or other portfolios.
+    *   **Persona 5: Frank (User with No Associations)**
+        *   A valid user but has no `UserRoleAssociation` records.
+    *   **Persona 6: Grace (User with Multiple Roles)**
+        *   Portfolio Admin for "Portfolio X".
+        *   Property Manager for "Property Y" (in a different "Portfolio Z").
+        *   Tenant in "Unit Alpha" (in "Property X").
+
+*   **Types of Test Cases/Scenarios:**
+
+    1.  **Login & Initial Context:**
+        *   **Scenario 1.1 (Alice - Owner):**
+            *   Alice logs in.
+            *   App displays "Alice's Portfolio" (potentially as default or in a selectable list).
+            *   Alice can select "Alice's Portfolio".
+            *   Properties "Property A" and "Property B" are listed.
+        *   **Scenario 1.2 (Bob - Admin):**
+            *   Bob logs in.
+            *   App displays "Charlie's Portfolio". No sign of "Alice's Portfolio".
+            *   Bob can select "Charlie's Portfolio".
+            *   "Property C" is listed.
+        *   **Scenario 1.3 (David - Manager):**
+            *   David logs in.
+            *   App might default to "Alice's Portfolio" / "Property A" or require selection.
+            *   David can see "Property A". No sign of "Property B" or "Property C".
+            *   Units "Unit 1", "Unit 2" are listed under "Property A".
+        *   **Scenario 1.4 (Eve - Tenant):**
+            *   Eve logs in.
+            *   App might default to "Alice's Portfolio" / "Property A" / "Unit 1".
+            *   Eve sees devices for "Unit 1". No access to "Unit 2" devices or other property/portfolio info.
+        *   **Scenario 1.5 (Frank - No Associations):**
+            *   Frank logs in.
+            *   App displays a state indicating no accessible portfolios/properties (e.g., "No properties found" or "Contact administrator").
+            *   No device lists are shown.
+        *   **Scenario 1.6 (Grace - Multiple Roles):**
+            *   Grace logs in.
+            *   App allows selection between "Portfolio X" and "Portfolio Z".
+            *   If "Portfolio X" is selected, she sees relevant properties/units she can manage or live in.
+            *   If "Portfolio Z" is selected, she sees properties she can manage.
+
+    2.  **Context Switching & Data Scoping:**
+        *   **Scenario 2.1 (Alice - Owner):**
+            *   Alice selects "Property A". Sees devices for "Property A" (including those in Unit 1 & 2).
+            *   Alice then selects "Unit 1" within "Property A". Sees only devices for "Unit 1".
+            *   Alice switches to "Property B". Sees devices for "Property B".
+        *   **Scenario 2.2 (Grace - Multiple Roles):**
+            *   Grace is viewing devices as Tenant in "Unit Alpha" (Portfolio X).
+            *   Grace switches context to be Portfolio Admin of "Portfolio X". Device list potentially changes to show all devices in portfolio or prompts for property selection.
+            *   Grace switches context to Property Manager of "Property Y" (Portfolio Z). Device list shows devices in Property Y.
+
+    3.  **Device Listing & Details:**
+        *   **Scenario 3.1 (Correct Scoping):** For each persona, navigate to their deepest relevant context (e.g., Eve to Unit 1). Verify only devices linked to that Unit (or Property if at Property level) are displayed.
+        *   **Scenario 3.2 (Device Details):** Tap on a device. Verify device detail screen shows correct information and reflects the current context.
+
+    4.  **Device Operations (Based on P0 Permissions):**
+        *   **Scenario 4.1 (Eve - Tenant in Unit 1):**
+            *   Eve selects a lock in "Unit 1".
+            *   Eve can perform allowed operations (e.g., lock/unlock if permitted by `LockDevice.canPerformRemoteOperation` for tenants).
+        *   **Scenario 4.2 (David - Manager of Property A):**
+            *   David selects a lock in "Unit 1" (within "Property A").
+            *   David can perform operations (likely broader than Eve's).
+        *   **Scenario 4.3 (Alice - Owner):**
+            *   Alice navigates to a device in any unit within her portfolio.
+            *   Alice can perform all operations.
+
+    5.  **CRUD Operations (Manual Simulation/Verification - primarily for `UserRoleAssociation` impact):**
+        *   *Note: P0 might not have UI for end-users to perform these. This might involve backend setup and then verifying app behavior.*
+        *   **Scenario 5.1 (Portfolio Creation - SuperAdmin):** If a SuperAdmin creates a new Portfolio and assigns Alice as Owner. Alice logs in and sees the new Portfolio.
+        *   **Scenario 5.2 (Add Property Manager - Alice):** Alice (Owner) uses a (hypothetical admin) tool to assign David as Property Manager for "Property A". David logs in and now has access to "Property A".
+        *   **Scenario 5.3 (Add Tenant - David):** David (Property Manager) uses a tool to assign Eve as Tenant to "Unit 1". Eve logs in and now has access to "Unit 1" and its devices.
+        *   **Scenario 5.4 (Remove Tenant - David):** David revokes Eve's tenancy for "Unit 1". Eve logs in and no longer sees devices for "Unit 1".
+
+    6.  **Negative Test Cases (Attempting Unauthorized Actions):**
+        *   **Scenario 6.1 (Eve - Tenant):**
+            *   Eve attempts to see devices in "Unit 2" (same property, different unit). Access Denied / Unit 2 not visible.
+            *   Eve attempts to see devices in "Property B". Access Denied / Property B not visible.
+        *   **Scenario 6.2 (David - Property Manager):**
+            *   David attempts to manage "Property C" (different portfolio). Access Denied / Property C not visible.
+            *   David attempts to perform Owner-level actions on "Property A" (if any are distinct and restricted). Action fails or option not visible.
+        *   **Scenario 6.3 (Cross-Portfolio Data Leakage):** Use Bob (Admin of Charlie's Portfolio). Systematically try to find any information or way to interact with "Alice's Portfolio" or its entities via UI manipulation or by observing any shared cache if applicable. Expect no leakage.
+
+    7.  **UI Responsiveness to Context Changes:**
+        *   **Scenario 7.1:** While on a device list for "Property A", an admin revokes the current user's access to "Property A" via a backend change. The app should gracefully handle this on next refresh or action: navigate away, show an error, or update the list to be empty.
+        *   **Scenario 7.2:** User is viewing devices for "Unit 1". User switches context picker to "Property A" (parent). Device list updates to show all devices in "Property A".
+
+*   **Tools/Techniques:**
+    *   Multiple test user accounts with pre-configured roles and entity associations on the backend.
+    *   A staging or test backend environment that mirrors production closely.
+    *   Detailed test script/checklist to guide manual testers.
+    *   Browser developer tools (for backend interaction if testing any web admin panels involved in setup) and iOS debugging tools (Xcode).
+
+**F. Security & Permission Testing (Cross-Cutting Concern)**
+
+*   **Focus:** Specifically verifying that the authorization rules defined by `UserRoleAssociation` are strictly enforced across all API endpoints and reflected correctly in the iOS app's behavior. This is an extension of all testing types but with a security lens.
+*   **Key Areas:**
+    *   Preventing unauthorized data reads (e.g., a tenant seeing another tenant's devices).
+    *   Preventing unauthorized data modifications (e.g., a property manager modifying a portfolio they don't administer).
+    *   Preventing unauthorized actions (e.g., a tenant performing an admin-only device operation).
+    *   Ensuring users cannot elevate their privileges or bypass tenancy checks.
+*   **Techniques:**
+    *   Role-based attack scenarios: Log in as one user (e.g., Tenant) and try to access/manipulate data of another user or higher-level entities by crafting requests (if testing APIs directly) or finding UI loopholes.
+    *   Parameter tampering: (For API testing) Modifying IDs in requests (e.g., `portfolioId`, `unitId`) to try to access resources not permitted for the authenticated user.
+    *   Review of authorization logic in code (backend middleware, iOS ViewModel checks).
+
+**Overall P0 Testing Goal Verification:**
+The sum of these testing activities must confirm:
+1.  Users can log in successfully.
+2.  Post-login, the app correctly identifies the Portfolios, Properties, and Units the user is associated with based on their `UserRoleAssociation` records.
+3.  The UI allows users to select their current operational context (Portfolio, Property, or Unit) from their permitted set.
+4.  Device listings and access to device operations are correctly scoped to the selected context and the user's role within that context.
+5.  Users cannot see or interact with Portfolios, Properties, Units, or Devices outside of their explicitly granted associations and roles.
+
+This detailed testing strategy aims to build confidence in the P0 multi-tenancy implementation before broader feature development continues.
 
 ---
-*(This concludes the detailed planning for P0. P1 and P2 will be detailed next.)*
 
 ## P1: "$1 Compliance Pack" In-App Purchase (iOS & Backend Stub)
 

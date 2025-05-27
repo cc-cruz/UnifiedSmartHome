@@ -182,6 +182,83 @@ public class ThermostatDevice: AbstractDevice {
         )
     }
     
+    // New initializer from Models.Device
+    public convenience init(fromApiDevice apiDevice: Models.Device) {
+        let onlineStatus = (apiDevice.status?.uppercased() == "ONLINE")
+
+        // Extract thermostat-specific attributes
+        var currentTempValue: Double? = nil
+        if let tempAny = apiDevice.attributes?["temperature"]?.value {
+            if let tempD = tempAny as? Double { currentTempValue = tempD }
+            else if let tempI = tempAny as? Int { currentTempValue = Double(tempI) }
+            else if let tempS = tempAny as? String, let tempDFromS = Double(tempS) { currentTempValue = tempDFromS }
+        }
+
+        var targetTempValue: Double? = nil
+        // Prefer specific setpoints, then general setpoint
+        if let heatSetAny = apiDevice.attributes?["heatingSetpoint"]?.value {
+            if let tempD = heatSetAny as? Double { targetTempValue = tempD }
+            else if let tempI = heatSetAny as? Int { targetTempValue = Double(tempI) }
+            else if let tempS = heatSetAny as? String, let tempDFromS = Double(tempS) { targetTempValue = tempDFromS }
+        } else if let coolSetAny = apiDevice.attributes?["coolingSetpoint"]?.value {
+            if let tempD = coolSetAny as? Double { targetTempValue = tempD } 
+            else if let tempI = coolSetAny as? Int { targetTempValue = Double(tempI) }
+            else if let tempS = coolSetAny as? String, let tempDFromS = Double(tempS) { targetTempValue = tempDFromS }
+        } else if let generalSetAny = apiDevice.attributes?["thermostatSetpoint"]?.value {
+            if let tempD = generalSetAny as? Double { targetTempValue = tempD }
+            else if let tempI = generalSetAny as? Int { targetTempValue = Double(tempI) }
+            else if let tempS = generalSetAny as? String, let tempDFromS = Double(tempS) { targetTempValue = tempDFromS }
+        }
+
+        var modeValue: ThermostatMode = .off
+        if let modeStr = apiDevice.attributes?["thermostatMode"]?.value as? String {
+            modeValue = ThermostatMode(rawValue: modeStr.uppercased()) ?? .off
+        }
+
+        var fanModeValue: ThermostatFanMode = .auto
+        if let fanModeStr = apiDevice.attributes?["thermostatFanMode"]?.value as? String {
+            fanModeValue = ThermostatFanMode(rawValue: fanModeStr.uppercased()) ?? .auto
+        }
+
+        var humidityValue: Double? = nil
+        if let humidityAny = apiDevice.attributes?["humidity"]?.value {
+            if let humD = humidityAny as? Double { humidityValue = humD }
+            else if let humI = humidityAny as? Int { humidityValue = Double(humI) }
+            else if let humS = humidityAny as? String, let humDFromS = Double(humS) { humidityValue = humDFromS }
+        }
+        
+        var heatingState = false
+        var coolingState = false
+        var fanRunningState = false
+        if let opStateStr = apiDevice.attributes?["thermostatOperatingState"]?.value as? String {
+            let opStateLower = opStateStr.lowercased()
+            heatingState = opStateLower == "heating" || opStateLower == "pending heat"
+            coolingState = opStateLower == "cooling" || opStateLower == "pending cool"
+            fanRunningState = opStateLower == "fan only"
+        } else if fanModeValue != .auto { // if fan is explicitly on or circulate
+             fanRunningState = true
+        }
+
+        self.init(
+            id: apiDevice.id,
+            name: apiDevice.name,
+            room: "Unknown Room", // Default
+            manufacturer: apiDevice.manufacturerName ?? "Unknown",
+            model: apiDevice.modelName ?? apiDevice.deviceTypeName ?? "Thermostat",
+            firmwareVersion: "N/A", // Default
+            isOnline: onlineStatus,
+            currentTemperature: currentTempValue,
+            targetTemperature: targetTempValue,
+            mode: modeValue,
+            humidity: humidityValue,
+            isHeating: heatingState,
+            isCooling: coolingState,
+            isFanRunning: fanRunningState,
+            fanMode: fanModeValue
+            // temperatureRange: default is 40...90. API might provide this in capabilities/details not in Models.Device struct
+        )
+    }
+    
     /// Set a new target temperature
     /// - Parameter temperature: The desired temperature
     /// - Returns: True if the temperature was set successfully
@@ -254,5 +331,41 @@ public class ThermostatDevice: AbstractDevice {
             fanMode: fanMode,
             temperatureRange: temperatureRange
         )
+    }
+
+    // MARK: - Codable Conformance
+
+    private enum CodingKeys: String, CodingKey {
+        case currentTemperature, targetTemperature, mode, humidity, isHeating, isCooling, isFanRunning, fanMode, temperatureRange
+    }
+
+    public required init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.currentTemperature = try container.decodeIfPresent(Double.self, forKey: .currentTemperature)
+        self.targetTemperature = try container.decodeIfPresent(Double.self, forKey: .targetTemperature)
+        self.mode = try container.decode(ThermostatMode.self, forKey: .mode)
+        self.humidity = try container.decodeIfPresent(Double.self, forKey: .humidity)
+        self.isHeating = try container.decode(Bool.self, forKey: .isHeating)
+        self.isCooling = try container.decode(Bool.self, forKey: .isCooling)
+        self.isFanRunning = try container.decode(Bool.self, forKey: .isFanRunning)
+        self.fanMode = try container.decode(ThermostatFanMode.self, forKey: .fanMode)
+        self.temperatureRange = try container.decode(ClosedRange<Double>.self, forKey: .temperatureRange)
+        
+        try super.init(from: decoder)
+    }
+
+    override public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(currentTemperature, forKey: .currentTemperature)
+        try container.encodeIfPresent(targetTemperature, forKey: .targetTemperature)
+        try container.encode(mode, forKey: .mode)
+        try container.encodeIfPresent(humidity, forKey: .humidity)
+        try container.encode(isHeating, forKey: .isHeating)
+        try container.encode(isCooling, forKey: .isCooling)
+        try container.encode(isFanRunning, forKey: .isFanRunning)
+        try container.encode(fanMode, forKey: .fanMode)
+        try container.encode(temperatureRange, forKey: .temperatureRange)
+        
+        try super.encode(to: encoder)
     }
 } 

@@ -158,7 +158,7 @@ public class APIService {
         page: Int? = nil,
         limit: Int? = nil,
         sortBy: String? = nil
-    ) -> AnyPublisher<PaginatedResponse<Unit>, SmartThingsError> {
+    ) -> AnyPublisher<PaginatedResponse<Models.Unit>, SmartThingsError> {
         var endpoint = "/api/v1/units"
         var queryItems: [String] = []
         if let pid = propertyId { queryItems.append("propertyId=\(pid)") }
@@ -172,7 +172,7 @@ public class APIService {
     }
     
     /// Get unit details by ID
-    public func getUnitDetails(unitId: String) -> AnyPublisher<Unit, SmartThingsError> {
+    public func getUnitDetails(unitId: String) -> AnyPublisher<Models.Unit, SmartThingsError> {
         let endpoint = "/api/v1/units/\(unitId)"
         return makeGetRequest(to: endpoint)
     }
@@ -186,7 +186,7 @@ public class APIService {
     }
     
     /// Add a tenant to a unit
-    public func addTenantToUnit(unitId: String, userId: String) -> AnyPublisher<UserRoleAssociation, SmartThingsError> {
+    public func addTenantToUnit(unitId: String, userId: String) -> AnyPublisher<Models.User.UserRoleAssociation, SmartThingsError> {
         let endpoint = "/api/v1/units/\(unitId)/tenants"
         struct AddTenantRequest: Codable {
             let userId: String
@@ -195,6 +195,21 @@ public class APIService {
         return makePostRequest(to: endpoint, with: body)
             .map { (response: AddTenantResponse) in response.data.userRoleAssociation }
             .eraseToAnyPublisher()
+    }
+    
+    // MARK: - User Management Stubs (to be implemented)
+
+    public func updateUserRole(userId: String, role: String) -> AnyPublisher<Void, SmartThingsError> {
+        // TODO: Implement actual API call to update user role
+        print("APIService STUB: updateUserRole called for userId: \(userId), role: \(role)")
+        return Just(()).setFailureType(to: SmartThingsError.self).eraseToAnyPublisher() // Placeholder success
+    }
+
+    public func validateToken(token: String) -> AnyPublisher<Void, SmartThingsError> {
+        // TODO: Implement actual API call to validate token
+        print("APIService STUB: validateToken called for token: \(token)")
+        // Typically, this would return some user info or just success/failure
+        return Just(()).setFailureType(to: SmartThingsError.self).eraseToAnyPublisher() // Placeholder success
     }
     
     // MARK: - Generic Network Methods
@@ -224,7 +239,7 @@ public class APIService {
                 } else {
                     // Try to decode error response
                     do {
-                        let errorResponse = try self.jsonDecoder.decode(ErrorResponse.self, from: data)
+                        let errorResponse = try self.jsonDecoder.decode(SmartThingsError.ErrorResponse.self, from: data)
                         return Fail(error: SmartThingsError.apiError(errorResponse)).eraseToAnyPublisher()
                     } catch {
                         return Fail(error: SmartThingsError.serverError(httpResponse.statusCode)).eraseToAnyPublisher()
@@ -269,7 +284,7 @@ public class APIService {
                 } else {
                     // Try to decode error response
                     do {
-                        let errorResponse = try self.jsonDecoder.decode(ErrorResponse.self, from: data)
+                        let errorResponse = try self.jsonDecoder.decode(SmartThingsError.ErrorResponse.self, from: data)
                         return Fail(error: SmartThingsError.apiError(errorResponse)).eraseToAnyPublisher()
                     } catch {
                         return Fail(error: SmartThingsError.serverError(httpResponse.statusCode)).eraseToAnyPublisher()
@@ -314,14 +329,7 @@ public class APIService {
         let data: DataWrapper
         
         struct DataWrapper: Codable {
-            let userRoleAssociation: UserRoleAssociation
+            let userRoleAssociation: Models.User.UserRoleAssociation
         }
-    }
-    
-    /// Error response from API
-    private struct ErrorResponse: Codable {
-        let status: String
-        let message: String
-        let details: String?
     }
 } 

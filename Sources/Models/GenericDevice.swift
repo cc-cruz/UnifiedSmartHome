@@ -62,6 +62,28 @@ public class GenericDevice: AbstractDevice {
         )
     }
     
+    // New initializer from Models.Device
+    public convenience init(fromApiDevice apiDevice: Models.Device) {
+        let capabilitiesStrings = apiDevice.capabilities?.map { $0.id } ?? []
+        let attributesAny = apiDevice.attributes?.mapValues { $0.value } ?? [:]
+        let onlineStatus = (apiDevice.status?.uppercased() == "ONLINE")
+
+        self.init(
+            id: apiDevice.id,
+            name: apiDevice.name,
+            room: "Unknown Room", // Default or decide how to source this
+            manufacturer: apiDevice.manufacturerName ?? "Unknown",
+            model: apiDevice.modelName ?? apiDevice.deviceTypeName ?? "Unknown",
+            firmwareVersion: "N/A", // Default or decide how to source this
+            isOnline: onlineStatus,
+            // lastSeen: Date() if online, or nil? API doesn't provide this directly.
+            // dateAdded: Date(), // Or parse from API if available, else current date.
+            // metadata: [:], // Or extract from apiDevice if relevant fields exist
+            capabilities: capabilitiesStrings,
+            attributes: attributesAny
+        )
+    }
+    
     /// Check if the device has a specific capability
     /// - Parameter capability: The capability to check
     /// - Returns: True if the device has the capability
@@ -108,5 +130,22 @@ public class GenericDevice: AbstractDevice {
             capabilities: capabilities,
             attributes: attributes
         )
+    }
+
+    // MARK: - Codable Conformance
+
+    private enum CodingKeys: String, CodingKey {
+        case capabilities
+        // Note: 'attributes: [String: Any]' is not directly Codable.
+        // If attributes need to be decoded, this requires a custom solution or a type-erasing wrapper.
+    }
+
+    public required init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.capabilities = try container.decode([String].self, forKey: .capabilities)
+        // self.attributes would need custom handling here if it's to be decoded.
+        // For now, initializing as empty or based on other logic if not in JSON.
+        self.attributes = [:] // Or handle based on design
+        try super.init(from: decoder)
     }
 } 

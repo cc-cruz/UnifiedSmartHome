@@ -3,6 +3,7 @@ import SwiftUI
 struct LockDetailView: View {
     @ObservedObject var viewModel: LockDetailViewModel
     @Environment(\.presentationMode) var presentationMode
+    @EnvironmentObject var userContextViewModel: UserContextViewModel // For completeness, though VM handles context logic
     
     // For biometric confirmation
     @State private var isAuthenticating = false
@@ -37,14 +38,17 @@ struct LockDetailView: View {
                         Label("Refresh Status", systemImage: "arrow.clockwise")
                     }
                     
-                    Divider()
-                    
-                    Button(action: { viewModel.showRenameDialog = true }) {
-                        Label("Rename", systemImage: "pencil")
-                    }
-                    
-                    Button(role: .destructive, action: { viewModel.showRemoveDialog = true }) {
-                        Label("Remove Lock", systemImage: "trash")
+                    // Conditionally show Rename and Remove options
+                    if viewModel.canModifyLockSettings {
+                        Divider()
+                        
+                        Button(action: { viewModel.showRenameDialog = true }) {
+                            Label("Rename", systemImage: "pencil")
+                        }
+                        
+                        Button(role: .destructive, action: { viewModel.showRemoveDialog = true }) {
+                            Label("Remove Lock", systemImage: "trash")
+                        }
                     }
                 } label: {
                     Image(systemName: "ellipsis.circle")
@@ -234,16 +238,20 @@ struct LockDetailView: View {
                 .font(.headline)
                 .frame(maxWidth: .infinity, alignment: .leading)
             
+            // Conditionally enable settings toggles
             Toggle("Allow Remote Control", isOn: $viewModel.allowRemoteControl)
                 .onChange(of: viewModel.allowRemoteControl) { newValue in
                     viewModel.updateRemoteControlSetting(enabled: newValue)
                 }
+                .disabled(!viewModel.canModifyLockSettings) // Disable if user cannot modify
             
             Toggle("Auto-Lock After 30 Seconds", isOn: $viewModel.autoLockEnabled)
                 .onChange(of: viewModel.autoLockEnabled) { newValue in
                     viewModel.updateAutoLockSetting(enabled: newValue)
                 }
+                .disabled(!viewModel.canModifyLockSettings) // Disable if user cannot modify
             
+            // Conditionally show Manage Access link
             if viewModel.userCanManageAccess {
                 NavigationLink(destination: LockAccessManagementView(lockId: viewModel.lock.id)) {
                     HStack {

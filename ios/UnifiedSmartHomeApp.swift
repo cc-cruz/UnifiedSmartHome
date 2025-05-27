@@ -7,8 +7,15 @@ import Adapters // Assuming adapters are in this module
 struct UnifiedSmartHomeApp: App {
     
     // StateObject to manage the lifecycle of our core services
-    @StateObject private var appServices = AppServices()
-    @StateObject private var userContext = UserContextViewModel()
+    @StateObject private var userContext = UserContextViewModel() // userContext created first
+    @StateObject private var appServices: AppServices // Declare appServices
+    
+    init() {
+        // Initialize userContext first as it's needed by AppServices
+        let localUserContext = UserContextViewModel()
+        _userContext = StateObject(wrappedValue: localUserContext)
+        _appServices = StateObject(wrappedValue: AppServices(userContextProvider: localUserContext))
+    }
     
     var body: some Scene {
         WindowGroup {
@@ -43,6 +50,8 @@ class AppServices: ObservableObject {
     let userManager: UserManager // Assuming UserManager manages its own state and notifies views
     let auditLogger: AuditLoggerProtocol // Use protocol
     let analyticsService: AnalyticsService // Use protocol if available
+    let apiService: APIService // Added APIService property
+    let userContextProvider: UserContextViewModel // Changed from UserContextInterface to concrete UserContextViewModel
     
     // Adapters
     let nestAdapter: SmartDeviceAdapter
@@ -55,16 +64,20 @@ class AppServices: ObservableObject {
     let deviceService: DeviceManagerProtocol // Use protocol
     let securityService: SecurityServiceProtocol // Use protocol
 
-    init() {
+    init(userContextProvider: UserContextViewModel) { // Changed parameter to concrete UserContextViewModel
         // 1. Instantiate Core Shared Services
         // Use concrete types here, but ideally use protocols for testability
         self.networkService = NetworkService() // Basic instance
         self.keychainHelper = KeychainHelper.shared // Existing singleton usage
         self.userManager = UserManager.shared // Existing singleton usage
         self.analyticsService = AnalyticsService.shared // Existing singleton usage
+        self.apiService = APIService() // Instantiate APIService
+        self.userContextProvider = userContextProvider // Store passed-in provider
         self.auditLogger = AuditLogger(
             analyticsService: self.analyticsService,
-            persistentStorage: CoreDataAuditLogStorage() // Assuming this exists
+            persistentStorage: CoreDataAuditLogStorage(), // Assuming this exists
+            apiService: self.apiService,
+            userContextProvider: self.userContextProvider // This will now be UserContextViewModel
         )
         
         // 2. Instantiate Adapters (Requires Configuration!)
@@ -111,8 +124,13 @@ class AppServices: ObservableObject {
             self.hueLightAdapter
         ]
         
-        // 3. Instantiate DeviceService with Adapters
-        self.deviceService = DeviceService(adapters: allAdapters)
+        // 3. Instantiate DeviceService with Adapters, UserManager, APIService, and UserContextInterface
+        self.deviceService = DeviceService(
+            adapters: allAdapters,
+            userManager: self.userManager,
+            apiService: self.apiService,
+            userContextProvider: self.userContextProvider
+        )
         
         // 4. Instantiate SecurityService
         // Assuming SecurityServiceProtocol exists and SecurityService conforms to it

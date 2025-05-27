@@ -2,6 +2,7 @@ import SwiftUI
 
 struct LockListView: View {
     @ObservedObject var viewModel: LockViewModel
+    @EnvironmentObject var userContextViewModel: UserContextViewModel
     @State private var isPresentingAddLock = false
     
     var body: some View {
@@ -19,7 +20,7 @@ struct LockListView: View {
                         }
                     }
                 } else {
-                    // Just show all locks
+                    // Just show all locks (filtered by context via ViewModel)
                     ForEach(viewModel.locksState.data ?? []) { lock in
                         LockCell(lock: lock) {
                             viewModel.navigateToLockDetail(lock)
@@ -31,11 +32,13 @@ struct LockListView: View {
                 await viewModel.fetchLocks()
             }
             .overlay(emptyState)
-            .navigationTitle("Locks")
+            .navigationTitle(viewModel.currentContextName)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(action: { isPresentingAddLock = true }) {
-                        Image(systemName: "plus")
+                    if viewModel.canAddLockInCurrentContext {
+                        Button(action: { isPresentingAddLock = true }) {
+                            Image(systemName: "plus")
+                        }
                     }
                 }
                 
@@ -70,7 +73,7 @@ struct LockListView: View {
                     .font(.system(size: 48))
                     .foregroundColor(.gray)
                 
-                Text("Could not load locks")
+                Text("Could not load locks for \(viewModel.currentContextName)")
                     .font(.headline)
                 
                 Text(error.localizedDescription)
@@ -92,19 +95,21 @@ struct LockListView: View {
                     .font(.system(size: 48))
                     .foregroundColor(.gray)
                 
-                Text("No locks found")
+                Text("No locks found in \(viewModel.currentContextName)")
                     .font(.headline)
                 
-                Text("Connect your first smart lock to get started")
+                Text(viewModel.canAddLockInCurrentContext ? "Add your first lock to this context." : "Contact your administrator to add locks.")
                     .font(.subheadline)
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal)
                 
-                Button("Add Lock") {
-                    isPresentingAddLock = true
+                if viewModel.canAddLockInCurrentContext {
+                    Button("Add Lock") {
+                        isPresentingAddLock = true
+                    }
+                    .buttonStyle(.borderedProminent)
                 }
-                .buttonStyle(.borderedProminent)
             }
         }
     }

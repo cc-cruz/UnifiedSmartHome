@@ -67,7 +67,7 @@ public class SwitchDevice: AbstractDevice {
         // switchType cannot be reliably determined from basic SmartThingsDevice data without more context
         // or specific capability checks. Defaulting to .generic.
         // If deviceData.deviceTypeName or capabilities give a hint, that could be used.
-        var determinedSwitchType: SwitchType = .generic
+        let determinedSwitchType: SwitchType = .generic
         // Example: if deviceData.capabilities.contains("fanSpeed") { determinedSwitchType = .fan }
         // This would require a more extensive mapping.
 
@@ -78,9 +78,54 @@ public class SwitchDevice: AbstractDevice {
             manufacturer: deviceData.manufacturerName ?? "Unknown",
             model: deviceData.deviceTypeName ?? deviceData.ocf?.fv ?? "Switch",
             firmwareVersion: deviceData.ocf?.fv ?? "Unknown",
+            isOnline: true, // Default to true, as SmartThingsDevice doesn't directly provide this
+            lastSeen: nil, // SmartThingsDevice doesn't directly provide this
+            dateAdded: Date(), // Default to current date
+            metadata: [:], // Default to empty metadata
             isOn: isOnValue,
             switchType: determinedSwitchType // Defaulting to .generic
             // lastToggled: nil // Not available from basic fetch
+        )
+    }
+    
+    // New initializer from Models.Device
+    public convenience init(fromApiDevice apiDevice: Models.Device) {
+        let onlineStatus = (apiDevice.status?.uppercased() == "ONLINE")
+
+        var determinedIsOn = false
+        if let switchState = apiDevice.attributes?["switch"]?.value as? String {
+            determinedIsOn = (switchState.lowercased() == "on")
+        } else if let switchBool = apiDevice.attributes?["switch"]?.value as? Bool {
+            determinedIsOn = switchBool
+        }
+        
+        var determinedSwitchType: SwitchType = .generic
+        if let typeName = apiDevice.deviceTypeName?.lowercased() {
+            if typeName.contains("light") { determinedSwitchType = .light }
+            else if typeName.contains("outlet") { determinedSwitchType = .outlet }
+            else if typeName.contains("fan") { determinedSwitchType = .fan }
+            else if typeName.contains("appliance") { determinedSwitchType = .appliance }
+        } else if let capabilities = apiDevice.capabilities?.map({ $0.id.lowercased() }) {
+            if capabilities.contains("switchlevel") || capabilities.contains("colorcontrol") {
+                 determinedSwitchType = .light
+            } else if capabilities.contains("fancontrol") {
+                 determinedSwitchType = .fan
+            }
+        }
+
+        // Calls the designated initializer of SwitchDevice
+        self.init(
+            id: apiDevice.id,
+            name: apiDevice.name,
+            room: "Unknown Room", 
+            manufacturer: apiDevice.manufacturerName ?? "Unknown",
+            model: apiDevice.modelName ?? apiDevice.deviceTypeName ?? "Switch",
+            firmwareVersion: "N/A", 
+            isOnline: onlineStatus, // This comes from apiDevice.status
+            // lastSeen, dateAdded, metadata will use defaults from the designated init
+            isOn: determinedIsOn,
+            switchType: determinedSwitchType,
+            lastToggled: nil 
         )
     }
     
@@ -145,5 +190,29 @@ public class SwitchDevice: AbstractDevice {
             switchType: switchType,
             lastToggled: lastToggled
         )
+    }
+
+    // MARK: - Codable Conformance
+
+    private enum CodingKeys: String, CodingKey {
+        case isOn, switchType, lastToggled
+    }
+
+    public required init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.isOn = try container.decode(Bool.self, forKey: .isOn)
+        self.switchType = try container.decode(SwitchType.self, forKey: .switchType)
+        self.lastToggled = try container.decodeIfPresent(Date.self, forKey: .lastToggled)
+        
+        try super.init(from: decoder)
+    }
+
+    override public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(isOn, forKey: .isOn)
+        try container.encode(switchType, forKey: .switchType)
+        try container.encodeIfPresent(lastToggled, forKey: .lastToggled)
+        
+        try super.encode(to: encoder)
     }
 } 

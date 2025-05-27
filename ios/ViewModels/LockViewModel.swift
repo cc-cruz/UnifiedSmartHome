@@ -1,7 +1,11 @@
 import Foundation
 import Combine
+import SwiftUI // Required for EnvironmentObject
+import Sources.Models // Ensure models are accessible
 
 // Generic async data loading state
+// TODO: This LoadingState enum is also used by DevicesViewModel.swift.
+// Consider moving it to a shared file (e.g., Utils.swift or a shared ViewModels module) to avoid duplication.
 enum LoadingState<T> {
     case idle
     case loading(previous: T?)
@@ -31,29 +35,75 @@ enum LoadingState<T> {
 class LockViewModel: ObservableObject {
     // Published properties
     @Published var locksState: LoadingState<[LockDevice]> = .idle
-    @Published var groupByRooms: Bool = true
-    
+    @Published var groupByRooms: Bool = true // Consider if this should be groupByUnit or property
+    @Published var currentContextDebugDescription: String = "Context: N/A"
+
     // Dependencies
-    private let lockAdapter: LockAdapter
+    // private let lockAdapter: LockAdapter // Replaced by deviceService
+    private let deviceService: DeviceService // New dependency
     private let lockDAL: LockDALProtocol
     private let userManager: UserManager
+    private let userContextViewModel: UserContextViewModel // New dependency
     private let analyticsService: AnalyticsService
     
     // Cancellables for Combine
     private var cancellables = Set<AnyCancellable>()
     
     // Computed properties
-    var roomsWithLocks: [Room] {
+    var roomsWithLocks: [Room] { // This might need to be updated for Unit/Property grouping
         // Get all rooms that have locks
         let roomIds = Set(locksState.data?.compactMap { $0.roomId } ?? [])
         return RoomService.shared.getRooms().filter { roomIds.contains($0.id) }
     }
+
+    // New computed property for current context name
+    var currentContextName: String {
+        if let unitId = userContextViewModel.selectedUnitId {
+            // Placeholder: Fetch unit name. In a real app, this would involve a lookup.
+            // For now, just using the ID.
+            return "Unit: \\(unitId)"
+        } else if let propertyId = userContextViewModel.selectedPropertyId {
+            // Placeholder: Fetch property name.
+            return "Property: \\(propertyId)"
+        } else if let portfolioId = userContextViewModel.selectedPortfolioId {
+            // Placeholder: Fetch portfolio name.
+            return "Portfolio: \\(portfolioId)"
+        }
+        return "All Accessible"
+    }
+
+    // New computed property for permission to add locks in current context
+    var canAddLockInCurrentContext: Bool {
+        guard let currentUser = userManager.currentUser else { return false }
+
+        if let unitId = userContextViewModel.selectedUnitId {
+            // To add a lock to a specific unit, the user must have rights to the parent property.
+            // We rely on UserContextViewModel.selectedPropertyId being the parent of selectedUnitId.
+            guard let parentPropertyId = userContextViewModel.selectedPropertyId else {
+                // This case should ideally not happen if the context selection flow is P -> P -> U.
+                // If only unitId is present without its parent propertyId in context, deny permission.
+                print("Warning: selectedUnitId (\\(unitId)) is present, but selectedPropertyId is nil. Cannot determine add permission.")
+                return false
+            }
+            return currentUser.isManager(ofPropertyId: parentPropertyId) || 
+                   currentUser.isOwner(ofPortfolioId: userManager.getPortfolioIdForProperty(propertyId: parentPropertyId) ?? "") || 
+                   currentUser.isPortfolioAdmin(ofPortfolioId: userManager.getPortfolioIdForProperty(propertyId: parentPropertyId) ?? "")
+
+        } else if let propertyId = userContextViewModel.selectedPropertyId {
+            // Requires being a manager of this property or owner/admin of its portfolio
+            return currentUser.isManager(ofPropertyId: propertyId) || currentUser.isOwner(ofPortfolioId: userManager.getPortfolioIdForProperty(propertyId: propertyId) ?? "") || currentUser.isPortfolioAdmin(ofPortfolioId: userManager.getPortfolioIdForProperty(propertyId: propertyId) ?? "")
+        }
+        // If only portfolio is selected, or no context, disallow adding directly (user must select property/unit)
+        return false
+    }
     
     // Initialization
-    init(lockAdapter: LockAdapter, lockDAL: LockDALProtocol, userManager: UserManager = .shared, analyticsService: AnalyticsService = .shared) {
-        self.lockAdapter = lockAdapter
+    init(deviceService: DeviceService, lockDAL: LockDALProtocol, userManager: UserManager = .shared, userContextViewModel: UserContextViewModel, analyticsService: AnalyticsService = .shared) {
+        // self.lockAdapter = lockAdapter // Removed
+        self.deviceService = deviceService
         self.lockDAL = lockDAL
         self.userManager = userManager
+        self.userContextViewModel = userContextViewModel // Store dependency
         self.analyticsService = analyticsService
         
         // Monitor authentication changes
@@ -61,13 +111,23 @@ class LockViewModel: ObservableObject {
             .dropFirst()
             .sink { [weak self] isAuthenticated in
                 if isAuthenticated {
-                    // User just logged in, fetch locks
                     Task {
                         await self?.fetchLocks()
                     }
                 } else {
-                    // User logged out, clear locks
                     self?.locksState = .idle
+                }
+            }
+            .store(in: &cancellables)
+
+        // Monitor context changes from UserContextViewModel
+        userContextViewModel.$selectedPortfolioId.combineLatest(userContextViewModel.$selectedPropertyId, userContextViewModel.$selectedUnitId)
+            .debounce(for: .milliseconds(100), scheduler: RunLoop.main) // Debounce to avoid rapid refetches
+            .sink { [weak self] _, _, _ in
+                guard let self = self else { return }
+                Task {
+                    print("LockViewModel: Context changed, fetching locks.")
+                    await self.fetchLocks()
                 }
             }
             .store(in: &cancellables)
@@ -76,31 +136,37 @@ class LockViewModel: ObservableObject {
     // MARK: - Public Methods
     
     func fetchLocks() async {
-        // Update UI state to loading
         await MainActor.run {
             locksState = .loading(previous: locksState.data)
+            self.currentContextDebugDescription = "Context: P:\\(self.userContextViewModel.selectedPortfolioId ?? "nil") Pr:\\(self.userContextViewModel.selectedPropertyId ?? "nil") U:\\(self.userContextViewModel.selectedUnitId ?? "nil")"
+
         }
         
         do {
-            // Fetch locks from adapter
-            let locks = try await lockAdapter.fetchLocks()
+            // Fetch locks using DeviceService and current context from UserContextViewModel
+            let locks = try await deviceService.fetchDevices(
+                propertyId: userContextViewModel.selectedPropertyId,
+                unitId: userContextViewModel.selectedUnitId
+            )
             
-            // Log analytics
+            // Filter for LockDevice type, as fetchDevices can return AbstractDevice
+            let lockDevices = locks.compactMap { $0 as? LockDevice }
+            
             analyticsService.logEvent("locks_fetched", parameters: [
-                "count": locks.count
+                "count": lockDevices.count,
+                "portfolio_id": userContextViewModel.selectedPortfolioId ?? "nil",
+                "property_id": userContextViewModel.selectedPropertyId ?? "nil",
+                "unit_id": userContextViewModel.selectedUnitId ?? "nil"
             ])
             
-            // Update UI state with success
             await MainActor.run {
-                locksState = .success(locks)
+                locksState = .success(lockDevices)
             }
         } catch {
-            // Log error
             analyticsService.logError(error, parameters: [
                 "operation": "fetch_locks"
             ])
             
-            // Update UI state with error
             await MainActor.run {
                 locksState = .failure(error, previous: locksState.data)
             }
@@ -181,23 +247,47 @@ class LockViewModel: ObservableObject {
     
     // Factory method to create related view models
     func makeAddLockViewModel() -> AddLockViewModel {
-        return AddLockViewModel(lockAdapter: lockAdapter)
+        // AddLockViewModel might also need context awareness or DeviceService
+        return AddLockViewModel(deviceService: deviceService, userContextViewModel: userContextViewModel)
     }
     
     func makeLockDetailViewModel(for lock: LockDevice) -> LockDetailViewModel {
-        return LockDetailViewModel(lock: lock, lockDAL: lockDAL)
+        return LockDetailViewModel(lock: lock, lockDAL: lockDAL, userManager: userManager, userContextViewModel: userContextViewModel)
     }
 }
 
 // Placeholder for AddLockViewModel
-class AddLockViewModel {
-    private let lockAdapter: LockAdapter
+// AddLockViewModel should be updated to handle tenancy context for adding locks
+class AddLockViewModel: ObservableObject {
+    // private let lockAdapter: LockAdapter // Replaced
+    private let deviceService: DeviceService
+    private let userContextViewModel: UserContextViewModel
+    @Published var newLockName: String = ""
+    @Published var selectedPropertyIdForNewLock: String? // User might need to pick if context is broad
+    @Published var selectedUnitIdForNewLock: String?   // User might need to pick
+
+    // TODO: Add properties for available properties/units to pick from, based on user's rights & current context
     
-    init(lockAdapter: LockAdapter) {
-        self.lockAdapter = lockAdapter
+    init(deviceService: DeviceService, userContextViewModel: UserContextViewModel) {
+        self.deviceService = deviceService
+        self.userContextViewModel = userContextViewModel
+        // Initialize selectedPropertyIdForNewLock / selectedUnitIdForNewLock based on userContextViewModel
+        self.selectedPropertyIdForNewLock = userContextViewModel.selectedPropertyId
+        self.selectedUnitIdForNewLock = userContextViewModel.selectedUnitId
+
     }
     
-    // Implementation would go here
+    func addLock() async {
+        // Implementation would involve:
+        // 1. Validating newLockName, selectedPropertyIdForNewLock/selectedUnitIdForNewLock
+        // 2. Calling a method on DeviceService or APIService to create/register the new lock
+        //    This backend endpoint would associate it with the property/unit
+        // 3. Handling success/failure
+        print("Attempting to add lock: \\(newLockName) to P: \\(selectedPropertyIdForNewLock ?? "N/A") U: \\(selectedUnitIdForNewLock ?? "N/A")")
+        // Example:
+        // guard let propertyId = selectedPropertyIdForNewLock, !newLockName.isEmpty else { return }
+        // try await deviceService.createLock(name: newLockName, propertyId: propertyId, unitId: selectedUnitIdForNewLock)
+    }
 }
 
 // Placeholder for LockDetailViewModel
@@ -212,20 +302,67 @@ class LockDetailViewModel: ObservableObject {
     @Published var showRemoveDialog = false
     @Published var newLockName = ""
     @Published var allowRemoteControl: Bool
-    @Published var autoLockEnabled: Bool = false
+    @Published var autoLockEnabled: Bool = false // This seems like a device-specific setting, not general P0
     
     private let lockDAL: LockDALProtocol
-    
+    private let userManager: UserManager
+    private let userContextViewModel: UserContextViewModel // Added
+
+    // Updated permission check based on roles and device's context
     var userCanManageAccess: Bool {
-        let role = UserManager.shared.currentUser?.role
-        return role == .owner || role == .propertyManager
+        guard let currentUser = userManager.currentUser,
+              let associations = currentUser.roleAssociations else { return false }
+        
+        // Check for unit-level tenant or property-level manager/portfolio admin/owner
+        if let unitId = lock.unitId, associations.contains(where: { $0.associatedEntityType == .unit && $0.associatedEntityId == unitId && $0.roleWithinEntity == .tenant }) {
+             // Tenants usually cannot manage access for others, but can use the lock.
+             // For "Manage Access" screen, tenant role is likely false.
+             // This depends on exact requirements for "Manage Access". Let's assume tenants cannot.
+            return false // Or true if tenants can manage their own guest keys, adjust as needed.
+        }
+
+        if let propertyId = lock.propertyId {
+            if associations.contains(where: { $0.associatedEntityType == .property && $0.associatedEntityId == propertyId && $0.roleWithinEntity == .propertyManager }) {
+                return true
+            }
+            // Check portfolio level access for the property's portfolio
+            if let portfolioId = userManager.getPortfolioIdForProperty(propertyId: propertyId) {
+                 if associations.contains(where: { $0.associatedEntityType == .portfolio && $0.associatedEntityId == portfolioId && ($0.roleWithinEntity == .portfolioAdmin || $0.roleWithinEntity == .owner) }) {
+                    return true
+                }
+            }
+        }
+        return false
     }
     
-    init(lock: LockDevice, lockDAL: LockDALProtocol) {
+    // Permission to modify lock settings (rename, remove, toggle remote control)
+    // Usually Property Manager or Portfolio Admin/Owner
+    var canModifyLockSettings: Bool {
+        guard let currentUser = userManager.currentUser,
+              let associations = currentUser.roleAssociations else { return false }
+
+        if let propertyId = lock.propertyId {
+            if associations.contains(where: { $0.associatedEntityType == .property && $0.associatedEntityId == propertyId && $0.roleWithinEntity == .propertyManager }) {
+                return true
+            }
+            if let portfolioId = userManager.getPortfolioIdForProperty(propertyId: propertyId) {
+                 if associations.contains(where: { $0.associatedEntityType == .portfolio && $0.associatedEntityId == portfolioId && ($0.roleWithinEntity == .portfolioAdmin || $0.roleWithinEntity == .owner) }) {
+                    return true
+                }
+            }
+        }
+        return false
+    }
+
+
+    init(lock: LockDevice, lockDAL: LockDALProtocol, userManager: UserManager, userContextViewModel: UserContextViewModel) {
         self.lock = lock
         self.lockDAL = lockDAL
-        self.allowRemoteControl = lock.isRemoteOperationEnabled
-        self.accessHistory = lock.accessHistory
+        self.userManager = userManager // Store
+        self.userContextViewModel = userContextViewModel // Store
+        self.allowRemoteControl = lock.isRemoteOperationEnabled // This should be true if user CAN enable it, not just current state
+        self.accessHistory = lock.accessHistory // Initial short list
+        self.newLockName = lock.name
         
         // Load full history
         Task {

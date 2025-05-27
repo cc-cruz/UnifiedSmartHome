@@ -236,6 +236,78 @@ public class LightDevice: AbstractDevice {
         )
     }
     
+    // New initializer from Models.Device
+    public convenience init(fromApiDevice apiDevice: Models.Device) {
+        let onlineStatus = (apiDevice.status?.uppercased() == "ONLINE")
+
+        // Extract light-specific attributes
+        var determinedIsOn = false
+        if let switchState = apiDevice.attributes?["switch"]?.value as? String {
+            determinedIsOn = (switchState.lowercased() == "on")
+        } else if let switchBool = apiDevice.attributes?["switch"]?.value as? Bool {
+            determinedIsOn = switchBool
+        }
+
+        var determinedBrightness: Double? = nil
+        if let levelAny = apiDevice.attributes?["level"]?.value { // From switchLevel capability
+            if let levelDouble = levelAny as? Double {
+                determinedBrightness = levelDouble
+            } else if let levelInt = levelAny as? Int {
+                determinedBrightness = Double(levelInt)
+            } else if let levelStr = levelAny as? String, let levelDoubleFromString = Double(levelStr) {
+                determinedBrightness = levelDoubleFromString
+            }
+        }
+
+        var determinedColor: LightColor? = nil
+        // SmartThings hue and saturation are 0-100 (percent). Our LightColor hue is 0-360.
+        var huePercent: Double? = nil
+        var saturationPercent: Double? = nil
+
+        if let hueAny = apiDevice.attributes?["hue"]?.value {
+            if let h = hueAny as? Double { huePercent = h }
+            else if let h = hueAny as? Int { huePercent = Double(h) }
+            else if let hStr = hueAny as? String, let hDbl = Double(hStr) { huePercent = hDbl }
+        }
+        if let saturationAny = apiDevice.attributes?["saturation"]?.value {
+            if let s = saturationAny as? Double { saturationPercent = s }
+            else if let s = saturationAny as? Int { saturationPercent = Double(s) }
+            else if let sStr = saturationAny as? String, let sDbl = Double(sStr) { saturationPercent = sDbl }
+        }
+        
+        if let h = huePercent, let s = saturationPercent {
+            let hueDegrees = h * 3.6 // Convert 0-100 scale to 0-360 scale
+            // Use the light's own brightness attribute for color, or the general brightness if not specified for color.
+            let colorBrightnessAny = apiDevice.attributes?["colorTemperature"]?.value ?? apiDevice.attributes?["level"]?.value // Example, might need specific attribute for color brightness
+            var finalColorBrightness = determinedBrightness ?? (determinedIsOn ? 100.0 : 0.0)
+            if let cbDbl = colorBrightnessAny as? Double { finalColorBrightness = cbDbl }
+            else if let cbInt = colorBrightnessAny as? Int { finalColorBrightness = Double(cbInt) }
+            else if let cbStr = colorBrightnessAny as? String, let cbDblFromString = Double(cbStr) { finalColorBrightness = cbDblFromString }
+
+            determinedColor = LightColor(hue: hueDegrees, saturation: s, brightness: finalColorBrightness)
+        }
+
+        // Determine support from capabilities array (mapping SmartThingsCapability.id to String)
+        let capabilityIds = apiDevice.capabilities?.map { $0.id } ?? []
+        let dimmingSupported = capabilityIds.contains("switchLevel")
+        let colorSupported = capabilityIds.contains("colorControl") || capabilityIds.contains("colorTemperature")
+
+        self.init(
+            id: apiDevice.id,
+            name: apiDevice.name,
+            room: "Unknown Room", // Default
+            manufacturer: apiDevice.manufacturerName ?? "Unknown",
+            model: apiDevice.modelName ?? apiDevice.deviceTypeName ?? "Light",
+            firmwareVersion: "N/A", // Default
+            isOnline: onlineStatus,
+            isOn: determinedIsOn,
+            brightness: determinedBrightness,
+            color: determinedColor,
+            supportsColor: colorSupported,
+            supportsDimming: dimmingSupported
+        )
+    }
+    
     /// Turn the light on
     public func turnOn() {
         self.isOn = true
@@ -306,5 +378,47 @@ public class LightDevice: AbstractDevice {
             supportsColor: supportsColor,
             supportsDimming: supportsDimming
         )
+    }
+
+    /// Set the color of the light
+    /// - Parameter color: The new color
+    public func setColor(_ color: LightColor) {
+        if supportsColor {
+            self.color = color
+        }
+    }
+
+    // MARK: - Codable Conformance
+
+    private enum CodingKeys: String, CodingKey {
+        case isOn, brightness, color, supportsColor, supportsDimming
+    }
+
+    public required init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.isOn = try container.decode(Bool.self, forKey: .isOn)
+        self.brightness = try container.decodeIfPresent(Double.self, forKey: .brightness)
+        self.color = try container.decodeIfPresent(LightColor.self, forKey: .color)
+        self.supportsColor = try container.decode(Bool.self, forKey: .supportsColor)
+        self.supportsDimming = try container.decode(Bool.self, forKey: .supportsDimming)
+        
+        // Call super.init(from: decoder) AFTER decoding subclass properties
+        // to ensure superclass doesn't overwrite them if keys overlap (though AbstractDevice has its own keys)
+        // More importantly, it ensures superclass properties are also decoded.
+        try super.init(from: decoder)
+    }
+
+    // It's good practice to also override encode if you have custom decoding
+    // to ensure encoding matches, though not strictly required to fix the init error.
+    override public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(isOn, forKey: .isOn)
+        try container.encodeIfPresent(brightness, forKey: .brightness)
+        try container.encodeIfPresent(color, forKey: .color)
+        try container.encode(supportsColor, forKey: .supportsColor)
+        try container.encode(supportsDimming, forKey: .supportsDimming)
+        
+        // Call super.encode(to: encoder) to encode properties from AbstractDevice
+        try super.encode(to: encoder)
     }
 } 

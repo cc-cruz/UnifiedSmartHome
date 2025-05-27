@@ -50,7 +50,7 @@ public enum SmartThingsError: LocalizedError, Hashable {
     case decodingError(Error)
     case encodingError(Error)
     case serverError(Int) // Assuming Int for status code
-    case apiError(ErrorResponse) // New case for structured API errors
+    case apiError(SmartThingsError.ErrorResponse) // Use the nested ErrorResponse
     
     // Implement Hashable
     public func hash(into hasher: inout Hasher) {

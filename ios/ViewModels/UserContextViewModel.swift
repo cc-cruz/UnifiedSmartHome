@@ -1,14 +1,15 @@
 import Foundation
 import Combine
 import Sources.Models
+import Models
 
-class UserContextViewModel: ObservableObject {
-    @Published var selectedRole: User.Role? = nil
-    @Published var selectedPortfolioId: String? = nil
-    @Published var selectedPropertyId: String? = nil
-    @Published var selectedUnitId: String? = nil
+public class UserContextViewModel: ObservableObject, UserContextInterface {
+    @Published public var selectedRole: Models.User.Role? = nil
+    @Published public var selectedPortfolioId: String? = nil
+    @Published public var selectedPropertyId: String? = nil
+    @Published public var selectedUnitId: String? = nil
     
-    func reset() {
+    public func reset() {
         selectedRole = nil
         selectedPortfolioId = nil
         selectedPropertyId = nil

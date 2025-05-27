@@ -14,6 +14,9 @@ public class LockDevice: AbstractDevice {
         case unlock = "UNLOCK"
         case autoLock = "AUTO_LOCK"
         case autoUnlock = "AUTO_UNLOCK"
+        case viewStatus = "VIEW_STATUS"
+        case changeSettings = "CHANGE_SETTINGS"
+        case viewAccessHistory = "VIEW_ACCESS_HISTORY"
     }
     
     private(set) public var currentState: LockState
@@ -118,6 +121,45 @@ public class LockDevice: AbstractDevice {
             accessHistory: [], // Default
             propertyId: nil,   // To be set later
             unitId: nil        // To be set later
+        )
+    }
+    
+    // New initializer from Models.Device
+    public convenience init(fromApiDevice apiDevice: Models.Device) {
+        let onlineStatus = (apiDevice.status?.uppercased() == "ONLINE")
+
+        // Extract lock-specific attributes
+        var determinedLockState: LockState = .unknown
+        if let lockStateStr = apiDevice.attributes?["lock"]?.value as? String {
+            determinedLockState = LockState(rawValue: lockStateStr.uppercased()) ?? .unknown
+        }
+
+        var determinedBatteryLevel: Int = 0 // Default
+        if let batteryAny = apiDevice.attributes?["battery"]?.value {
+            if let batInt = batteryAny as? Int {
+                determinedBatteryLevel = batInt
+            } else if let batDouble = batteryAny as? Double {
+                determinedBatteryLevel = Int(batDouble)
+            } else if let batStr = batteryAny as? String, let batIntFromString = Int(batStr) {
+                determinedBatteryLevel = batIntFromString
+            }
+        }
+
+        self.init(
+            id: apiDevice.id,
+            name: apiDevice.name,
+            room: "Unknown Room", // Default
+            manufacturer: apiDevice.manufacturerName ?? "Unknown",
+            model: apiDevice.modelName ?? apiDevice.deviceTypeName ?? "Lock",
+            firmwareVersion: "N/A", // Default
+            isOnline: onlineStatus,
+            currentState: determinedLockState,
+            batteryLevel: determinedBatteryLevel,
+            lastStateChange: nil, // Not typically available from this API struct
+            isRemoteOperationEnabled: true, // Default, can be refined
+            accessHistory: [], // Default
+            propertyId: nil, // To be set by multi-tenancy logic later
+            unitId: nil      // To be set by multi-tenancy logic later
         )
     }
     
@@ -292,15 +334,16 @@ public class LockDevice: AbstractDevice {
 
     // MARK: - Codable Conformance
 
-    private enum LockDeviceCodingKeys: String, CodingKey {
-        case currentState, batteryLevel, lastStateChange, isRemoteOperationEnabled, accessHistory, propertyId, unitId
+    private enum CodingKeys: String, CodingKey {
+        // Properties specific to LockDevice
+        case currentState, batteryLevel, lastStateChange, isRemoteOperationEnabled, accessHistory
+        // Tenancy properties also need to be included if they are to be encoded/decoded with LockDevice
+        case propertyId, unitId 
     }
 
     public required init(from decoder: Decoder) throws {
-        // Call super.init(from:) FIRST to initialize AbstractDevice properties.
-        try super.init(from: decoder)
-
-        let container = try decoder.container(keyedBy: LockDeviceCodingKeys.self)
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        // Decode LockDevice specific properties
         currentState = try container.decode(LockState.self, forKey: .currentState)
         batteryLevel = try container.decode(Int.self, forKey: .batteryLevel)
         lastStateChange = try container.decodeIfPresent(Date.self, forKey: .lastStateChange)
@@ -308,11 +351,15 @@ public class LockDevice: AbstractDevice {
         accessHistory = try container.decode([LockAccessRecord].self, forKey: .accessHistory)
         propertyId = try container.decodeIfPresent(String.self, forKey: .propertyId)
         unitId = try container.decodeIfPresent(String.self, forKey: .unitId)
+
+        // Call super.init(from: decoder) to decode AbstractDevice properties
+        // This MUST come AFTER all properties of this class (LockDevice) are initialized.
+        try super.init(from: decoder)
     }
 
-    public override func encode(to encoder: Encoder) throws {
-        try super.encode(to: encoder) // Ensures AbstractDevice properties are encoded
-        var container = encoder.container(keyedBy: LockDeviceCodingKeys.self)
+    override public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        // Encode LockDevice specific properties
         try container.encode(currentState, forKey: .currentState)
         try container.encode(batteryLevel, forKey: .batteryLevel)
         try container.encodeIfPresent(lastStateChange, forKey: .lastStateChange)
@@ -320,6 +367,9 @@ public class LockDevice: AbstractDevice {
         try container.encode(accessHistory, forKey: .accessHistory)
         try container.encodeIfPresent(propertyId, forKey: .propertyId)
         try container.encodeIfPresent(unitId, forKey: .unitId)
+        
+        // Call super.encode(to: encoder) to encode AbstractDevice properties
+        try super.encode(to: encoder)
     }
 }
 
