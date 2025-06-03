@@ -212,6 +212,31 @@ public class APIService {
         return Just(()).setFailureType(to: SmartThingsError.self).eraseToAnyPublisher() // Placeholder success
     }
     
+    // MARK: - In-App Purchase Methods
+    
+    /// Validate App Store receipt with backend
+    public func validateReceipt(receiptData: String, productId: String) async throws -> ReceiptValidationResponse {
+        let endpoint = "/api/v1/iap/validate-receipt"
+        
+        struct ReceiptValidationRequest: Codable {
+            let receiptData: String
+            let productId: String
+        }
+        
+        let request = ReceiptValidationRequest(receiptData: receiptData, productId: productId)
+        
+        // For now, return a mock response since backend isn't implemented yet
+        // TODO: Replace with actual API call when backend is ready
+        print("APIService: Receipt validation called for product: \(productId)")
+        
+        // Simulate successful validation
+        return ReceiptValidationResponse(
+            status: "success",
+            message: "Receipt validated successfully",
+            user: nil // Backend would return updated user with hasCompliancePack = true
+        )
+    }
+    
     // MARK: - Generic Network Methods
     
     private func makeGetRequest<T: Decodable>(to endpoint: String) -> AnyPublisher<T, SmartThingsError> {
@@ -330,6 +355,19 @@ public class APIService {
         
         struct DataWrapper: Codable {
             let userRoleAssociation: Models.User.UserRoleAssociation
+        }
+    }
+    
+    /// Response type for receipt validation
+    public struct ReceiptValidationResponse: Codable {
+        public let status: String
+        public let message: String
+        public let user: User?
+        
+        public init(status: String, message: String, user: User?) {
+            self.status = status
+            self.message = message
+            self.user = user
         }
     }
 } 

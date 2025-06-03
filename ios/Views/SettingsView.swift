@@ -2,10 +2,12 @@ import SwiftUI
 
 struct SettingsView: View {
     @EnvironmentObject var authViewModel: AuthViewModel
+    @StateObject private var iapViewModel = IAPViewModel()
     @State private var notificationsEnabled = true
     @State private var locationServicesEnabled = true
     @State private var darkModeEnabled = false
     @State private var autoLockTime = 5
+    @State private var showingCompliancePackView = false
     
     let autoLockOptions = [1, 5, 10, 15, 30, 60]
     
@@ -64,6 +66,62 @@ struct SettingsView: View {
                     }
                 }
                 
+                // MARK: - Compliance Pack Section
+                Section(header: Text("Premium Features")) {
+                    Button(action: {
+                        showingCompliancePackView = true
+                    }) {
+                        HStack {
+                            Image(systemName: "shield.checkered")
+                                .foregroundColor(.blue)
+                            
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Compliance Pack")
+                                    .font(.body)
+                                    .fontWeight(.medium)
+                                    .foregroundColor(.primary)
+                                
+                                Text(iapViewModel.complianceFeatureStatusMessage)
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                            
+                            Spacer()
+                            
+                            if iapViewModel.hasCompliancePack {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .foregroundColor(.green)
+                            } else {
+                                Text(iapViewModel.compliancePackPrice)
+                                    .font(.caption)
+                                    .fontWeight(.semibold)
+                                    .foregroundColor(.blue)
+                            }
+                            
+                            Image(systemName: "chevron.right")
+                                .foregroundColor(.gray)
+                                .font(.caption)
+                        }
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                    
+                    if iapViewModel.hasCompliancePack {
+                        Button(action: {
+                            // Navigate to compliance report
+                            showingCompliancePackView = true
+                        }) {
+                            Label("View Compliance Report", systemImage: "doc.text.magnifyingglass")
+                                .foregroundColor(.blue)
+                        }
+                    }
+                    
+                    Button("Restore Purchases") {
+                        iapViewModel.restorePurchases()
+                    }
+                    .font(.footnote)
+                    .foregroundColor(.blue)
+                }
+                
                 Section(header: Text("App Settings")) {
                     Toggle("Notifications", isOn: $notificationsEnabled)
                     
@@ -92,6 +150,9 @@ struct SettingsView: View {
                 }
             }
             .navigationTitle("Settings")
+        }
+        .sheet(isPresented: $showingCompliancePackView) {
+            CompliancePackView()
         }
     }
     

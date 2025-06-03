@@ -216,6 +216,13 @@ public class UserManager: ObservableObject {
         }
     }
     
+    /// Update the current user object (useful for IAP feature updates)
+    public func updateCurrentUser(_ updatedUser: User) {
+        DispatchQueue.main.async {
+            self.currentUser = updatedUser
+        }
+    }
+    
     // MARK: - Helper Methods
     
     private func saveToken(token: String) {

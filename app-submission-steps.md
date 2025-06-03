@@ -13,8 +13,8 @@ Successfully submit a functional version of the Unified Smart Home app to the Ap
 
 *   **P0: Core Multi-Tenancy Implementation (iOS & Backend)**
     *   Goal: Users can log in, and the app correctly scopes their access to devices based on a Portfolio -> Property -> Unit hierarchy.
-*   **P1: "$1 Compliance Pack" In-App Purchase (iOS & Backend Stub)**
-    *   Goal: Users can purchase a "Compliance Pack" add-on via IAP. The app recognizes the purchase. Actual feature can be minimal for now.
+*   **P1: "$1 Compliance Pack" In-App Purchase (iOS & Backend Implementation)**
+    *   Goal: Users can purchase a "Compliance Pack" add-on via standard Apple In-App Purchase. The app recognizes the purchase, and a placeholder for the feature is visible. The actual detailed compliance report generation can be a future enhancement.
 *   **P2: Critical Fixes & Testing for Multi-Tenancy**
     *   Goal: Ensure existing device listing, control, and user management features work correctly with the new multi-tenancy model.
 
@@ -850,101 +850,115 @@ This detailed testing strategy aims to build confidence in the P0 multi-tenancy 
 
 ---
 
-## P1: "$1 Compliance Pack" In-App Purchase (iOS & Backend Stub)
+## P1: "$1 Compliance Pack" In-App Purchase (iOS & Backend Implementation)
 
 **Goal**: Users can purchase a "Compliance Pack" add-on via standard Apple In-App Purchase. The app recognizes the purchase, and a placeholder for the feature is visible. The actual detailed compliance report generation can be a future enhancement.
 
-**Status: PENDING DEFINITION.**
+**Status: iOS COMPLETE, BACKEND PENDING.**
 
-### Step 1: App Store Connect Setup (Manual Task)
+### Step 1: Backend IAP Validation & Feature Flag Implementation (NO EXTERNAL DEPENDENCIES)
 
-1.  **Define IAP Product**:
-    *   Log in to App Store Connect.
-    *   Navigate to "App Store" -> "In-App Purchases" for your app.
-    *   Create a new **Non-Consumable** In-App Purchase product.
-    *   **Reference Name**: E.g., "Compliance Pack Add-on"
-    *   **Product ID**: E.g., `com.unifiedsmarthome.compliancepack1` (must be unique).
-    *   **Pricing**: Set to $0.99 (or desired tier).
-    *   **Localization**: Add display name (e.g., "Compliance Pack") and description for the App Store.
-    *   **Review Information**: Add a screenshot and notes for the Apple review team.
-    *   **Availability**: Make sure it's marked as "Cleared for Sale".
+**Priority: CRITICAL - Complete First**
+**Dependencies: None (uses public Apple endpoints)**
 
-### Step 2: Backend Stub for IAP Validation & Feature Flag (Minimal)
-
-While full server-side receipt validation is best practice, for a Sunday deadline and a stubbed feature, the backend might only need minimal involvement initially if client-side unlocking is temporarily accepted. However, aiming for a simple validation endpoint is better.
-
-1.  **Optional: Simple Receipt Validation Endpoint (`POST /api/v1/iap/validate-receipt`)**:
+1.  **REQUIRED: Receipt Validation Endpoint (`POST /api/v1/iap/validate-receipt`)**:
     *   **Purpose**: Allow the iOS app to send the App Store receipt for server-side validation and to record/flag the feature enablement for the user.
     *   **Request Body**: `{ "receiptData": "String" (base64 encoded receipt), "productId": "String" }`
-    *   **Logic (Simplified for Stub)**:
-        1.  Receive receipt data.
-        2.  (Highly Recommended) Forward to Apple's `verifyReceipt` endpoint (`https://buy.itunes.apple.com/verifyReceipt` or `https://sandbox.itunes.apple.com/verifyReceipt`).
+    *   **Logic (Production-Ready)**:
+        1.  Receive receipt data from authenticated iOS client.
+        2.  Forward to Apple's `verifyReceipt` endpoint:
+            *   Sandbox: `https://sandbox.itunes.apple.com/verifyReceipt`
+            *   Production: `https://buy.itunes.apple.com/verifyReceipt`
         3.  Parse Apple's response. If valid for the `productId`:
-            *   Update a flag on the `User` model (e.g., `hasCompliancePack: Bool = true`) or in a separate `UserFeatures` collection.
-            *   Return success to the client.
-        4.  If invalid, return an error.
-    *   **Response Body (200)**: `{ "status": "success", "data": { "message": "Feature enabled", "user": updatedUserObject (optional) } }`
-    *   **Auth**: Requires authenticated user.
+            *   Update `User` model: `hasCompliancePack: true`
+            *   Return success with updated user object.
+        4.  If invalid, return structured error.
+    *   **Response Body (200)**: `{ "status": "success", "data": { "message": "Feature enabled", "user": updatedUserObject } }`
+    *   **Error Handling**: Implement proper error responses for invalid receipts, network failures, etc.
+    *   **Auth**: Requires authenticated user via JWT middleware.
 
-2.  **Update User Model (Backend - Step P0.2 Revisited)**:
-    *   Add: `hasCompliancePack: Boolean` (default `false`) to the `User` model/schema.
+2.  **Update User Model (Backend)**:
+    *   Add: `hasCompliancePack: Boolean` (default `false`) to the `User` schema/model.
+    *   Ensure proper database migration if using structured DB.
 
-3.  **Update Auth/User Profile Responses (Backend - Step P0.5 Revisited)**:
-    *   Ensure `POST /api/v1/auth/login` and `GET /api/v1/users/me` responses include the `hasCompliancePack` field in the user object. This allows the client to know the feature status immediately on login/refresh.
+3.  **Update Authentication Responses**:
+    *   Ensure `POST /api/v1/auth/login` response includes `hasCompliancePack` field.
+    *   Ensure `GET /api/v1/users/me` response includes `hasCompliancePack` field.
+    *   This allows immediate IAP status awareness on login/profile refresh.
 
-### Step 3: iOS In-App Purchase Implementation
+4.  **Create IAP Routes**:
+    *   Add new route file: `backend/routes/iap.routes.js`
+    *   Integrate with existing protected API structure under `/api/v1/iap/`
 
-Use Apple's `StoreKit` framework.
+### Step 2: End-to-End IAP Testing (NO EXTERNAL DEPENDENCIES)
 
-1.  **Create `IAPManager.swift` (or similar service)**:
-    *   **Responsibilities**: 
-        *   Fetching product information from App Store Connect.
-        *   Initiating purchase flows.
-        *   Handling transaction updates (purchased, failed, restored).
-        *   Validating receipts (client-side for P1 MVP if server-side is deferred, but strongly advise against for production; or calling the backend validation endpoint).
-        *   Persisting purchase status (e.g., in `UserDefaults` or by relying on `UserManager.currentUser.hasCompliancePack`).
-        *   Providing a way for ViewModels to observe purchase status.
-    *   **Fetch Products**: 
-        *   Use `SKProductsRequest` to fetch details of the "Compliance Pack" IAP product using its Product ID.
-        *   Store the `SKProduct` object for display and purchase.
-    *   **Initiate Purchase**: 
-        *   When a user taps a "Buy Compliance Pack" button, create an `SKPayment` with the fetched `SKProduct` and add it to the `SKPaymentQueue.default()`.
-    *   **Handle Transaction Updates (`SKPaymentTransactionObserver`)**: 
-        *   Conform `IAPManager` to `SKPaymentTransactionObserver`.
-        *   Implement `paymentQueue(_:updatedTransactions:)`:
-            *   Switch on `transaction.transactionState`:
-                *   `.purchased`: 
-                    1.  **Receipt Validation**: 
-                        *   (Preferred) Send `transaction.transactionReceipt` (if available) or `Bundle.main.appStoreReceiptURL` to your backend validation endpoint (`POST /api/v1/iap/validate-receipt`).
-                        *   (Fallback/Temporary for P1 stub if backend is not ready - NOT FOR PRODUCTION) Perform minimal client-side checks or assume valid for stub.
-                    2.  **Unlock Feature**: If valid, update `UserManager.currentUser.hasCompliancePack = true` (or a local flag observed by UI). Call `UserManager.updateUserLocally(user)` or similar if `currentUser` is a struct.
-                    3.  `SKPaymentQueue.default().finishTransaction(transaction)`.
-                *   `.failed`: Handle error (e.g., user cancelled, payment failed). `SKPaymentQueue.default().finishTransaction(transaction)`.
-                *   `.restored`: Similar to `.purchased` - validate receipt, unlock feature. `SKPaymentQueue.default().finishTransaction(transaction)`.
-                *   `.purchasing`, `.deferred`: Update UI if necessary (e.g., show loading indicator).
-    *   **Restore Purchases**: Implement a "Restore Purchases" button that calls `SKPaymentQueue.default().restoreCompletedTransactions()`.
+**Priority: HIGH - Complete Second**
+**Dependencies: Step 1 Backend Implementation**
 
-2.  **Update `UserManager.swift` (iOS - Step P0.7 Revisited)**:
-    *   Add `var hasCompliancePack: Bool` to the local `User` struct/class if not already there (should mirror backend).
-    *   The `currentUser` object should reflect this status, updated after successful purchase/validation or fetched from login/profile API.
-    *   Potentially add a method `updateUserPurchaseStatus(hasCompliancePack: Bool)`.
+1.  **Backend Testing with Mock Receipt Data**:
+    *   Create test cases with valid/invalid mock Apple receipt responses
+    *   Verify endpoint correctly validates and updates user status
+    *   Test error handling for malformed requests
 
-### Step 4: UI for Compliance Pack Feature
+2.  **iOS-Backend Integration Testing**:
+    *   Test complete flow: iOS mock purchase → backend validation → user status update
+    *   Verify iOS correctly handles backend responses
+    *   Test error scenarios (network failures, invalid receipts)
 
-1.  **Purchase Button/UI Element**: 
-    *   In a relevant part of the app (e.g., Settings screen, or a dedicated "Add-ons" section).
-    *   Display the name and price of the Compliance Pack (fetched via `SKProduct`).
-    *   Button action: `IAPManager.shared.purchaseProduct(product: compliancePackProduct)`.
-    *   Disable/hide this button if `UserManager.currentUser.hasCompliancePack` is true.
+3.  **User State Synchronization Testing**:
+    *   Verify `hasCompliancePack` status persists across app restarts
+    *   Test login flow includes IAP status
+    *   Verify UI correctly reflects purchase status
 
-2.  **Indication of Enabled Feature (Placeholder)**:
-    *   If `UserManager.currentUser.hasCompliancePack` is true:
-        *   Show a new section/item in the UI, e.g., "View Compliance Report" (even if it navigates to an empty/"Coming Soon" view for P1).
-        *   Alternatively, a simple toggle/checkmark in settings indicating the pack is active.
+### Step 3: iOS Implementation Status (ALREADY COMPLETE)
 
-3.  **"Restore Purchases" Button**: 
-    *   Typically in the Settings screen.
-    *   Calls `IAPManager.shared.restorePurchases()`.
+**Status: ✅ COMPLETE**
+
+The following iOS components are already implemented:
+*   **`IAPManager.swift`**: Complete StoreKit integration with product fetching, purchase processing, receipt validation, and error handling
+*   **`IAPViewModel.swift`**: MVVM pattern for IAP UI state management and feature access control
+*   **`CompliancePackView.swift`**: Purchase interface with feature showcase, purchase flow, and success/error handling
+*   **`SettingsView.swift`**: Enhanced with Premium Features section displaying Compliance Pack status
+*   **`User.swift`**: Enhanced with `hasCompliancePack` property and proper Codable support
+*   **Integration**: IAPManager integrated into app services dependency injection
+
+### Step 4: App Store Connect Setup (REQUIRES APPLE DEVELOPER ACCOUNT)
+
+**Priority: FINAL - Complete After Backend Testing**
+**Dependencies: Apple Developer Account ($99/year)**
+
+⚠️ **BLOCKER**: This step requires Apple Developer Account and cannot proceed until account is created.
+
+1.  **Define IAP Product**:
+    *   Log in to App Store Connect
+    *   Navigate to "App Store" → "In-App Purchases" for your app
+    *   Create **Non-Consumable** In-App Purchase product
+    *   **Product ID**: `com.unifiedsmarthome.compliancepack1` (MUST match iOS code exactly)
+    *   **Pricing**: Set to $0.99 (Tier 1)
+    *   **Localization**: Add display name ("Compliance Pack") and description
+    *   **Review Information**: Add screenshot and review notes
+
+2.  **Create Sandbox Test Accounts**:
+    *   Navigate to "Users and Access" → "Sandbox Testers"
+    *   Create test accounts for purchase flow testing
+    *   Use these accounts for device testing (must sign out of real App Store account)
+
+### Step 5: Real Purchase Flow Testing (REQUIRES APP STORE CONNECT)
+
+**Priority: VALIDATION - Complete After App Store Connect Setup**
+**Dependencies: Steps 1-4 Complete**
+
+1.  **Sandbox Purchase Testing**:
+    *   Test complete purchase flow with sandbox accounts on physical iOS device
+    *   Verify backend receives and validates real Apple receipts
+    *   Test purchase restoration functionality
+    *   Test various failure scenarios (payment cancelled, network errors)
+
+2.  **Production Readiness Verification**:
+    *   Confirm all endpoints work with real Apple receipt data
+    *   Verify error handling with actual failure conditions
+    *   Performance testing with real network conditions
+    *   End-to-end user flow validation
 
 ---
 
@@ -954,43 +968,102 @@ Use Apple's `StoreKit` framework.
 
 **Status: PENDING EXECUTION.**
 
-1.  **Execute P0 Testing Strategy**: 
-    *   Systematically go through all test types and scenarios defined in **P0 Step 10** (Backend Unit/Integration, iOS Unit/Integration, E2E Manual Testing).
-    *   Log all bugs and issues encountered.
+### Phase 2A: Core Programming Tasks (NO EXTERNAL DEPENDENCIES)
 
-2.  **IAP Testing (P1)**:
-    *   **Sandbox Environment**: Use App Store Connect sandbox tester accounts.
-    *   Test the entire purchase flow for the Compliance Pack.
-    *   Test purchase restoration.
-    *   Test UI updates correctly based on purchase status.
-    *   Verify (if backend validation exists) that the backend user record is updated.
-    *   Test with different sandbox scenarios (e.g., interrupted purchase, payment failure).
+**Priority: IMMEDIATE - Complete Before External Account Setup**
 
-3.  **Bug Fixing**: 
-    *   Prioritize and fix bugs identified during P0 and P1 testing. Focus on critical and high-priority issues first.
-    *   Perform regression testing after fixes to ensure no new issues were introduced.
+1.  **P0 Multi-Tenancy Testing & Fixes**:
+    *   Execute comprehensive testing strategy from P0 Step 10
+    *   **Backend Unit Tests**: Test all tenancy-scoped API endpoints with multiple user scenarios
+    *   **iOS Unit Tests**: Test UserContextViewModel, APIService tenancy integration
+    *   **Manual E2E Testing**: Complete tenant isolation verification scenarios
+    *   **Bug Documentation**: Log all issues in structured format with severity ratings
+    *   **Critical Bug Fixes**: Address P0/P1 severity issues immediately
 
-4.  **UI/UX Refinement**: 
-    *   Based on E2E testing, identify any areas where the multi-tenancy UI or IAP flow is confusing, inefficient, or error-prone.
-    *   Make necessary adjustments to views, navigation, and user feedback (error messages, loading states).
+2.  **IAP Backend-iOS Integration Testing**:
+    *   Test mock receipt validation flow end-to-end
+    *   Verify user state synchronization across app lifecycle
+    *   Test error handling for network failures, invalid data
+    *   Validate UI updates correctly reflect IAP status changes
+    *   Test with various user scenarios (new users, existing users, multiple roles)
 
-5.  **Performance Testing (Basic)**:
-    *   Ensure key list views (devices, units, properties) load reasonably quickly, especially with a moderate amount of test data reflecting multi-tenancy.
-    *   Monitor app responsiveness during core operations.
+3.  **Performance & Stability Optimization**:
+    *   **Memory Usage**: Profile app for memory leaks, especially in device list views
+    *   **Network Efficiency**: Optimize API calls, implement proper caching
+    *   **UI Responsiveness**: Ensure smooth scrolling in large device lists
+    *   **Background Behavior**: Test app state restoration, background tasks
 
-6.  **Security Review (High-Level for Sunday)**:
-    *   Double-check that all new backend APIs have appropriate authentication and authorization middleware (as per P0 Step 4).
-    *   Ensure sensitive data is not being inadvertently exposed in API responses.
-    *   Review IAP receipt validation logic for robustness (server-side is key long-term).
+4.  **Security & Data Validation**:
+    *   **Input Validation**: Ensure all user inputs are properly sanitized
+    *   **Authorization Checks**: Verify all API endpoints enforce proper user permissions
+    *   **Data Leakage Prevention**: Test cross-tenant data isolation thoroughly
+    *   **JWT Token Handling**: Verify proper token refresh and expiration handling
 
-7.  **Final Sanity Checks**: 
-    *   Test on multiple device types and iOS versions (if possible).
-    *   Review all UI text for typos and clarity.
-    *   Ensure app icons, launch screens, and App Store metadata are prepared.
+5.  **UI/UX Polish & Accessibility**:
+    *   **Error States**: Implement comprehensive error messaging and recovery flows
+    *   **Loading States**: Add proper loading indicators for all async operations
+    *   **Accessibility**: Ensure VoiceOver support and proper accessibility labels
+    *   **Typography & Spacing**: Review and standardize UI consistency
 
-*(This concludes the high-level planning for P1 and P2. Implementation will require diving deep into StoreKit and thorough testing of all tenancy and IAP flows.)* 
+### Phase 2B: IoT Device Integration Preparation (EXTERNAL DEPENDENCIES)
 
-### P0 Step 4: Implement Basic iOS UI for Portfolio/Property/Unit Selection & Display
+**Priority: MEDIUM - After Core Programming Complete**
+**Dependencies: SmartThings, Nest, Hue, August, Yale API accounts**
+
+6.  **IoT Adapter Implementation**:
+    *   **SmartThings Integration**: Implement OAuth flow and device management
+    *   **Nest Integration**: Implement device discovery and control
+    *   **Philips Hue Integration**: Implement bridge discovery and light control
+    *   **August Lock Integration**: Implement lock status and control
+    *   **Yale Lock Integration**: Implement lock management
+    *   **Error Handling**: Robust error handling for device communication failures
+
+7.  **Device State Management**:
+    *   **Real-time Updates**: Implement device state synchronization
+    *   **Offline Handling**: Graceful degradation when devices are offline
+    *   **Multi-tenant Device Assignment**: Ensure devices are properly scoped to units/properties
+
+### Phase 2C: App Store Preparation (EXTERNAL DEPENDENCIES)
+
+**Priority: FINAL - After All Programming Complete**
+**Dependencies: Apple Developer Account**
+
+8.  **App Store Connect Setup**:
+    *   **App Listing**: Create app metadata, descriptions, keywords
+    *   **Screenshots**: Generate required screenshots for all device types
+    *   **App Privacy**: Complete privacy nutrition label requirements
+    *   **App Review Information**: Prepare demo account and testing instructions
+
+9.  **Final Testing & Submission**:
+    *   **Device Compatibility**: Test on multiple iOS versions and device types
+    *   **App Store Review Guidelines**: Verify compliance with all guidelines
+    *   **Beta Testing**: Deploy via TestFlight for final validation
+    *   **Submission**: Submit for App Store review with complete metadata
+
+### Execution Strategy
+
+**Week 1 (No External Dependencies Required)**:
+- Complete P1 Step 1: Backend IAP Implementation
+- Complete P1 Step 2: End-to-End IAP Testing  
+- Execute Phase 2A: Core Programming Tasks (Items 1-5)
+
+**Week 2 (External Dependencies Required)**:
+- Setup IoT device API accounts
+- Execute Phase 2B: IoT Device Integration (Items 6-7)
+- Setup Apple Developer Account
+- Execute Phase 2C: App Store Preparation (Items 8-9)
+
+**Critical Success Metrics**:
+- ✅ Zero P0/P1 severity bugs
+- ✅ All multi-tenancy isolation tests pass
+- ✅ IAP flow works end-to-end with mock data
+- ✅ App performs smoothly on iOS 15+ devices
+- ✅ Complete security audit passes
+- ✅ Ready for App Store submission
+
+---
+
+## P0 Step 4: Implement Basic iOS UI for Portfolio/Property/Unit Selection & Display
 
 **Status: COMPLETE.**
 

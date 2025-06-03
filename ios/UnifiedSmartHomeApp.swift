@@ -52,6 +52,7 @@ class AppServices: ObservableObject {
     let analyticsService: AnalyticsService // Use protocol if available
     let apiService: APIService // Added APIService property
     let userContextProvider: UserContextViewModel // Changed from UserContextInterface to concrete UserContextViewModel
+    let iapManager: IAPManager // Added IAP Manager
     
     // Adapters
     let nestAdapter: SmartDeviceAdapter
@@ -79,6 +80,7 @@ class AppServices: ObservableObject {
             apiService: self.apiService,
             userContextProvider: self.userContextProvider // This will now be UserContextViewModel
         )
+        self.iapManager = IAPManager() // Instantiate IAPManager
         
         // 2. Instantiate Adapters (Requires Configuration!)
         // TODO: Replace placeholders with actual config/keys/tokens/IPs

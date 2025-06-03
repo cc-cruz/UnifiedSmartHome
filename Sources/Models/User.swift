@@ -12,6 +12,9 @@ public struct User: Codable, Identifiable {
     public var defaultPortfolioId: String?
     public var defaultPropertyId: String?
     public var defaultUnitId: String?
+    
+    // IAP feature flags
+    public var hasCompliancePack: Bool
 
     public enum Role: String, Codable {
         case owner = "OWNER"                     // Owner of a Portfolio
@@ -70,7 +73,8 @@ public struct User: Codable, Identifiable {
         roleAssociations: [UserRoleAssociation]? = nil,
         defaultPortfolioId: String? = nil,
         defaultPropertyId: String? = nil,
-        defaultUnitId: String? = nil
+        defaultUnitId: String? = nil,
+        hasCompliancePack: Bool = false
     ) {
         self.id = id
         self.email = email
@@ -81,6 +85,7 @@ public struct User: Codable, Identifiable {
         self.defaultPortfolioId = defaultPortfolioId
         self.defaultPropertyId = defaultPropertyId
         self.defaultUnitId = defaultUnitId
+        self.hasCompliancePack = hasCompliancePack
     }
 
     // Convenience method to get roles for a specific property ID
