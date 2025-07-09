@@ -2,6 +2,10 @@ const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
 require('dotenv').config();
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
+const pinoHttp = require('pino-http');
+const logger = require('./logger');
 
 // Import database connection
 const connectDB = require('./config/db');
@@ -18,8 +22,42 @@ const { protect } = require('./middleware/auth.middleware'); // Import the prote
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Enable trust proxy so Express sees original protocol when behind Render's TLS proxy
+app.enable('trust proxy');
+
+// Security: Redirect HTTP → HTTPS in production
+app.use((req, res, next) => {
+  if (process.env.NODE_ENV === 'production' && req.protocol !== 'https') {
+    return res.redirect(`https://${req.headers.host}${req.url}`);
+  }
+  next();
+});
+
+// Set up structured logging with Pino
+app.use(pinoHttp({ logger }));
+
 // Middleware
-app.use(cors());
+// Replace wide-open CORS with allow-list via ALLOWED_ORIGINS env var
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || '').split(',').map(o => o.trim()).filter(Boolean);
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.length === 0 || allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    return callback(new Error('Not allowed by CORS'));
+  }
+}));
+
+// Security headers
+app.use(helmet());
+
+// Rate limiting
+app.use(rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+}));
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
@@ -63,7 +101,7 @@ app.use('/api/v1', protect, apiV1Router); // Protect all /api/v1 routes
 
 // Error handling middleware
 app.use((err, req, res, next) => {
-  console.error(err.stack);
+  req.log ? req.log.error(err) : console.error(err.stack);
   res.status(500).json({
     success: false,
     message: 'Internal server error',
