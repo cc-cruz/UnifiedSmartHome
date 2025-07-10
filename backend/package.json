@@ -27,8 +27,7 @@
     "express-rate-limit": "^7.0.0",
     "pino": "^8.17.0",
     "pino-pretty": "^10.2.0",
-    "pino-http": "^8.0.0",
-    "pino-datadog": "^5.1.0"
+    "pino-http": "^8.0.0"
   },
   "devDependencies": {
     "nodemon": "^3.0.1"

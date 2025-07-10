@@ -6,3 +6,23 @@ DerivedData/
 .swiftpm/configuration/registries.json
 .swiftpm/xcode/package.xcworkspace/contents.xcworkspacedata
 .netrc
+
+# Local environment files
+backend/.env
+backend/.env.local
+
+# Node modules
+backend/node_modules/
+node_modules/
+
+# Local environment files
+backend/.env
+backend/.env.local
+*.env
+
+# Node modules
+backend/node_modules/
+node_modules/
+
+# OS files
+.DS_Store
