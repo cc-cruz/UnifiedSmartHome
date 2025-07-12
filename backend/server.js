@@ -70,6 +70,14 @@ app.get('/health', (req, res) => { // Moved health check to be explicitly public
   res.status(200).send('Server is running');
 });
 
+// SmartThings webhook routes (public - SmartThings service calls these)
+const smartthingsWebhookRoutes = require('./routes/smartthings-webhooks');
+app.use('/api/webhooks/smartthings', smartthingsWebhookRoutes);
+
+// SmartThings Schema OAuth Server routes (public) - for SmartThings to call us
+const smartthingsOAuthServerRoutes = require('./routes/smartthings-oauth-server');
+app.use('/api/v1/smartthings/oauth', smartthingsOAuthServerRoutes);
+
 // Protected API v1 Routes
 // All routes under /api/v1 will now be protected by the 'protect' middleware
 const apiV1Router = express.Router();
@@ -84,6 +92,14 @@ apiV1Router.use('/units', unitV1Routes); // Add unit v1 routes
 // Re-introduce devices route import for v1 protected path
 const deviceRoutes = require('./routes/devices');
 apiV1Router.use('/devices', deviceRoutes);
+
+// SmartThings OAuth routes (protected) - for our app to call SmartThings
+const smartthingsOAuthRoutes = require('./routes/smartthings-oauth');
+apiV1Router.use('/smartthings/oauth', smartthingsOAuthRoutes);
+
+// SmartThings device management routes (protected)
+const smartthingsDeviceRoutes = require('./routes/smartthings-devices');
+apiV1Router.use('/smartthings/devices', smartthingsDeviceRoutes);
 
 // Remove legacy users path and add under api v1 router
 // app.use('/api/users', userRoutes);
